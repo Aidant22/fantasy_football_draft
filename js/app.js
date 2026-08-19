@@ -52,6 +52,7 @@ const state = {
   userToSlot: new Map(),
   appliedPicks: 0,
   lastPickNo: 0,
+  primed: false,
   lastPollAt: 0,
   pollFailures: 0,
   mock: null,
@@ -97,6 +98,8 @@ const el = {
   emptyConnect: $('#empty-connect'),
   emptyMock: $('#empty-mock'),
   stage: $('#stage'),
+  stageFlash: $('#stage-flash'),
+  stageWalkout: $('#stage-walkout'),
   stageBody: $('#stage-body'),
   toasts: $('#toasts'),
   footLeft: $('#foot-left'),
@@ -106,6 +109,8 @@ const el = {
 const board = new Board(el.board);
 const director = new RevealDirector({
   stage: el.stage,
+  stageFlash: el.stageFlash,
+  stageWalkout: el.stageWalkout,
   stageBody: el.stageBody,
   toasts: el.toasts,
   board,
@@ -115,6 +120,8 @@ const director = new RevealDirector({
 /** Previews never write to the board, so they get their own director. */
 const previewDirector = new RevealDirector({
   stage: el.stage,
+  stageFlash: el.stageFlash,
+  stageWalkout: el.stageWalkout,
   stageBody: el.stageBody,
   toasts: el.toasts,
   board: null,
@@ -257,6 +264,7 @@ async function startWithContext({ league, users, rosters, draft }, { mock }) {
   state.rounds = Number(draft?.settings?.rounds) || 15;
   state.appliedPicks = 0;
   state.lastPickNo = 0;
+  state.primed = false;
 
   buildTeamMaps({ users, rosters, draft });
 
@@ -354,8 +362,12 @@ async function tick() {
     .filter((p) => p && Number.isFinite(Number(p.pick_no)))
     .sort((a, b) => Number(a.pick_no) - Number(b.pick_no));
 
+  // Only the first poll of a connection is history: joining a draft that is
+  // already underway backfills silently, but a draft that starts while you're
+  // watching animates from pick 1.
+  const isFirstPaint = !state.primed;
+
   if (sorted.length > state.appliedPicks) {
-    const isFirstPaint = state.appliedPicks === 0;
     const fresh = sorted.slice(state.appliedPicks);
     state.appliedPicks = sorted.length;
     state.lastPickNo = Number(sorted[sorted.length - 1].pick_no) || state.lastPickNo;
@@ -374,6 +386,7 @@ async function tick() {
     if (state.draft?.status === 'drafting') setStatus('live', 'Live');
   }
 
+  state.primed = true;
   updateClock();
   foot(null, `${state.mock ? 'Mock draft' : 'Sleeper'} · polled ${timeAgo(state.lastPollAt)} · ${state.appliedPicks} picks`);
 }

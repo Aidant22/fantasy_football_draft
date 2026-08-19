@@ -80,10 +80,11 @@
   </footer>
 </div>
 
-<!-- Full-screen reveal stage (round 1 / manual preview) -->
+<!-- Full-screen walkout stage (round 1 / manual preview) -->
 <div class="stage" id="stage" hidden>
-  <div class="stage-flash" id="stage-flash" aria-hidden="true"></div>
   <div class="stage-rays" id="stage-rays" aria-hidden="true"></div>
+  <div class="stage-flash" id="stage-flash" aria-hidden="true"></div>
+  <div class="stage-walkout" id="stage-walkout" aria-hidden="true"></div>
   <div class="stage-body" id="stage-body" role="status" aria-live="polite"></div>
 </div>
 
@@ -178,6 +179,7 @@
 
 <template id="tpl-reveal">
   <div class="reveal">
+    <img class="reveal-watermark" alt="" width="260" height="260" referrerpolicy="no-referrer" decoding="async">
     <div class="reveal-meta">
       <span class="reveal-round"></span>
       <span class="reveal-pick"></span>
@@ -201,6 +203,36 @@
       </div>
     </div>
     <div class="reveal-bar" aria-hidden="true"><span class="reveal-bar-fill"></span></div>
+  </div>
+</template>
+
+<template id="tpl-walkout">
+  <div class="walkout">
+    <span class="wo-beam"></span>
+    <div class="wo-phase wo-phase-pos">
+      <span class="wo-kicker">Position</span>
+      <span class="wo-big wo-pos-text"></span>
+      <span class="wo-sub wo-pos-sub"></span>
+    </div>
+    <div class="wo-phase wo-phase-team">
+      <span class="wo-kicker">Team</span>
+      <span class="wo-logo-wrap">
+        <img class="wo-logo" alt="" width="180" height="180" referrerpolicy="no-referrer" decoding="async">
+        <span class="wo-logo-ring"></span>
+      </span>
+      <span class="wo-big wo-team-text"></span>
+    </div>
+    <span class="wo-sparks"></span>
+  </div>
+</template>
+
+<template id="tpl-mini-walkout">
+  <div class="mini-wo" data-phase="pos">
+    <span class="mini-wo-pos"></span>
+    <span class="mini-wo-team">
+      <img class="mini-wo-logo" alt="" width="42" height="42" referrerpolicy="no-referrer" decoding="async">
+      <span class="mini-wo-team-text"></span>
+    </span>
   </div>
 </template>
 

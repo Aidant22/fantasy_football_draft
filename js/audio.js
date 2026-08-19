@@ -5,10 +5,15 @@
  * and generated noise at runtime, so there is no licensed audio in this repo
  * and nothing to download.
  *
- *   fanfare() — round 1 takeover: noise riser, sub hit, brass-ish arpeggio
- *               into a sustained major chord with a bell shimmer (~2.6s)
- *   sting()   — round 2+: a clipped two-note blip with a transient (~0.45s)
- *   tick()    — subtle mode: a single soft blip (~0.08s)
+ * The walkout is scored in beats, so each cue is its own call:
+ *
+ *   riser(ms)  — the build under the light beam before the first flash
+ *   hit(step)  — the percussive chime that punches in each phase card
+ *                (position, then team); pitch rises with the step
+ *   reveal()   — the payoff when the player card walks out: sub boom, a
+ *                sustained major chord and a bell shimmer (~1.8s)
+ *   sting()    — round 2+ payoff: a clipped two-note blip (~0.45s)
+ *   tick()     — subtle mode: a single soft blip (~0.08s)
  */
 
 export class AudioEngine {
@@ -178,31 +183,47 @@ export class AudioEngine {
 
   /* ----------------------------------------------------------- cues */
 
-  /** Round 1: full fanfare, ~2.6s. */
-  fanfare() {
+  /** The build under the light beam. `ms` matches the beam's growth. */
+  riser(ms = 900) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.01;
+    const dur = Math.max(0.2, ms / 1000);
+    this._riser(t, dur, 0.16);
+    this._sub(t, { from: 46, to: 92, dur, gain: 0.26 });
+  }
+
+  /**
+   * A phase punch: metallic chime plus a transient and a short sub thump.
+   * Step 0 is the position card, step 1 the team card, step 2+ climbs.
+   */
+  hit(step = 0) {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime + 0.01;
+    const base = [523.25, 659.25, 783.99][Math.min(2, Math.max(0, step))];
+
+    this._transient(t, 0.2);
+    this._sub(t, { from: 86, to: 44, dur: 0.34, gain: 0.42 });
+    this._voice(base, t, 0.2, { gain: 0.12, cutoff: [1000, 5600], attack: 0.005 });
+    this._bell(base * 2, t + 0.006, 0.42, 0.075);
+    this._bell(base * 3, t + 0.02, 0.3, 0.035);
+  }
+
+  /** The payoff when the card walks out. */
+  reveal() {
     if (!this.ready) return;
     const t = this.ctx.currentTime + 0.02;
 
-    this._riser(t, 0.52, 0.2);
-    this._sub(t + 0.46, { from: 90, to: 40, dur: 1.0, gain: 0.55 });
-    this._transient(t + 0.46, 0.18);
+    this._transient(t, 0.2);
+    this._sub(t, { from: 96, to: 34, dur: 1.6, gain: 0.6 });
 
-    // Ascending call: G4 - C5 - E5
-    const call = [[392.0, 0.46], [523.25, 0.60], [659.25, 0.74]];
-    call.forEach(([f, at]) => this._voice(f, t + at, 0.26, { gain: 0.15 }));
-
-    // Landing chord: C major, held.
     const chord = [261.63, 392.0, 523.25, 659.25, 783.99];
-    chord.forEach((f, i) => this._voice(f, t + 0.9, 1.55, {
+    chord.forEach((f, i) => this._voice(f, t, 1.7, {
       gain: i === 0 ? 0.13 : 0.105,
-      cutoff: [900, 6200],
-      attack: 0.02,
+      cutoff: [900, 6400],
+      attack: 0.018,
     }));
-    this._transient(t + 0.9, 0.14);
 
-    // Bell shimmer on top of the chord.
-    [1046.5, 1318.5, 1567.98, 2093.0].forEach((f, i) => this._bell(f, t + 0.94 + i * 0.055, 1.1, 0.05));
-    this._sub(t + 0.9, { from: 65, to: 33, dur: 1.5, gain: 0.34 });
+    [1046.5, 1318.5, 1567.98, 2093.0].forEach((f, i) => this._bell(f, t + 0.04 + i * 0.055, 1.2, 0.05));
   }
 
   /** Round 2+: short sting, ~0.45s. */

@@ -2,14 +2,21 @@
 
 A single-page, zero-dependency draft tracker for Sleeper fantasy football leagues.
 It polls Sleeper's public API during your draft, fills a snake-order board in real
-time, and plays a tiered reveal animation for every pick — a full-screen takeover
-with an original synthesized fanfare in round 1, a quick corner banner from round 2
-on, and a live intensity dial you can drop to "subtle" when the draft starts dragging.
+time, and plays a pack-walkout reveal for every pick — the position flashes first,
+then the club, then the player card walks out of the light — with a live intensity
+dial you can drop to "subtle" when the draft starts dragging.
 
 Built to look good on a screen recording: dark board, tabular typography, animations
-that stay on transform/opacity so they don't stutter while OBS is capturing.
+that stay on transform/opacity/filter so they don't stutter while OBS is capturing.
 
 ![board](docs/board.png)
+
+### The walkout
+
+| | |
+| --- | --- |
+| ![position beat](docs/walkout-position.png) | ![card beat](docs/walkout-card.png) |
+| **1. Position** — a light beam builds, then the position punches in, tinted to that position's colour | **2. Club → 3. Card** — the club badge flashes, then the player card rises out of a burst of light with sparks |
 
 ## Run it
 
@@ -49,10 +56,13 @@ npm run players      # writes data/players.json (gitignored)
 
 | Mode | Round 1 | Round 2+ |
 | --- | --- | --- |
-| **Full** | Full-screen takeover, flash + rays, fanfare, ~4.5s hold | Quick flash, corner banner, short sting, ~1.5s |
-| **Compact** | Corner banner | Corner banner |
+| **Full** | Full walkout: beam → position → club → card, ~5.8s | Same three beats inside a corner banner, ~1.8s |
+| **Compact** | Corner-banner walkout | Corner-banner walkout |
 | **Subtle** | Board cell highlight + soft blip | Board cell highlight + soft blip |
 | **Off** | Board updates silently | Board updates silently |
+
+The beat sheet lives in one object at the top of `js/reveal.js` — every duration
+in the sequence is a number you can tune without touching the choreography.
 
 Change it mid-draft from the toolbar or with `1`–`4`. If picks arrive in a burst
 (autodraft, or a reconnect after a lull) the director automatically compresses
@@ -62,10 +72,12 @@ tiers to catch up rather than queueing a minute of animations.
 
 Every cue is synthesized in the browser with the Web Audio API — oscillators,
 envelopes and generated noise — so there is no audio file in this repo and nothing
-licensed to worry about. Round 1 gets a noise riser, a sub hit, a three-note brass
-call and a sustained major chord with bell shimmer; rounds 2+ get a clipped
-two-note sting. Browsers block audio until you interact with the page, so click
-**Sound** (or press `S`) once before the draft starts.
+licensed to worry about. The walkout is scored to its beats: a noise riser under
+the light beam, a metallic chime on the position card, a higher one on the club
+card, then a sub boom with a sustained major chord and bell shimmer as the player
+card lands. Rounds 2+ get the two chimes and a clipped sting. Browsers block audio
+until you interact with the page, so click **Sound** (or press `S`) once before the
+draft starts.
 
 Team artwork comes from Sleeper's public CDN (`sleepercdn.com`) — player headshots
 and NFL club logos. No league shield, no broadcast chime, nothing trademark-adjacent.
@@ -129,9 +141,12 @@ npm test             # needs playwright: npm i -D playwright
 ```
 
 Boots the app headless with every external host blocked, runs a mock draft, and
-checks the board fills in snake order, both animation tiers fire, the intensity
-control takes effect, invalid league IDs are rejected client-side, broken CDN
-images degrade cleanly, and there are no console errors or CSP violations.
+checks the board fills in snake order, the walkout plays its beats in order
+(position → club → card, in both the full and banner tiers, asserted on rendered
+opacity rather than screenshot timing), the intensity control takes effect,
+invalid league IDs are rejected client-side, broken CDN images degrade cleanly,
+the synthesized cues produce signal without clipping, and there are no console
+errors or CSP violations.
 
 ## Layout
 

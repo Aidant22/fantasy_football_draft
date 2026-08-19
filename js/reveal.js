@@ -1,8 +1,10 @@
 /**
- * Tiered pick reveals.
+ * Tiered pick reveals, staged like a pack walkout: the position flashes
+ * first, then the club, then the player card itself walks out.
  *
- *   tier "full"    — round 1: screen takeover, flash, rays, held ~5s
- *   tier "compact" — round 2+: quick flash + corner banner, gone in ~1.7s
+ *   tier "full"    — round 1: screen takeover, three beats, ~5.8s
+ *   tier "compact" — round 2+: the same three beats compressed into a corner
+ *                    banner, done in ~1.6s
  *   tier "subtle"  — board highlight only (the cell animation still fires)
  *   tier "off"     — nothing but the board update
  *
@@ -14,14 +16,37 @@
 import { fromTemplate, setText, setImage, initials, playerPhotoUrl, teamLogoUrl, ordinal, sleep } from './util.js';
 import { audio } from './audio.js';
 
-const DUR = {
-  full: { in: 900, hold: 3600, out: 380 },
-  compact: { in: 430, hold: 1050, out: 300 },
+/** Beat sheet, in ms. Every number is a wall-clock offset you can tune. */
+const BEATS = {
+  full: {
+    beam: 300,      // dark, light beam grows, riser builds
+    posIn: 820,     // POSITION punches in and holds
+    posOut: 170,    // …and snaps away (matches the phase-out animation)
+    teamIn: 860,    // CLUB badge punches in and holds
+    teamOut: 170,
+    cardIn: 720,    // card rises out of the light
+    hold: 2500,     // card holds for the camera
+    out: 420,
+  },
+  compact: {
+    beam: 0,
+    posIn: 300,
+    posOut: 0,
+    teamIn: 300,
+    teamOut: 0,
+    cardIn: 240,
+    hold: 720,
+    out: 260,
+  },
 };
 
+const SPARKS = 16;
+
 export class RevealDirector {
-  constructor({ stage, stageBody, toasts, board, getSettings }) {
+  constructor({ stage, stageFlash, stageWalkout, stageBody, toasts, board, getSettings }) {
     this.stage = stage;
+    this.stageFlash = stageFlash;
+    this.stageWalkout = stageWalkout;
     this.stageBody = stageBody;
     this.toasts = toasts;
     this.board = board;
@@ -51,6 +76,7 @@ export class RevealDirector {
     this.queue.length = 0;
   }
 
+  /** Cut the current reveal short (Esc). */
   skip() {
     this.skipRequested = true;
   }
@@ -60,6 +86,7 @@ export class RevealDirector {
     try {
       while (this.queue.length) {
         const item = this.queue.shift();
+        // eslint-disable-next-line no-await-in-loop
         await this.play(item, this.tierFor(item.view.round, this.queue.length));
       }
     } finally {
@@ -84,15 +111,12 @@ export class RevealDirector {
     }
 
     if (tier === 'compact') {
-      audio.sting();
-      this.#flash();
       this.#land(view);
-      await this.#toast(item);
+      await this.#miniWalkout(item);
       return;
     }
 
-    audio.fanfare();
-    await this.#takeover(item);
+    await this.#walkout(item);
     this.#land(view);
   }
 
@@ -105,49 +129,120 @@ export class RevealDirector {
     }
   }
 
-  #flash() {
-    if (this.getSettings().reduceMotion) return;
-    const el = document.createElement('div');
-    el.className = 'mini-flash';
-    document.body.append(el);
-    setTimeout(() => el.remove(), 420);
-  }
+  /**
+   * Round 1: the full walkout.
+   *   beam → POSITION → CLUB → card rises → hold → fade back to the board.
+   */
+  async #walkout(item) {
+    const { view } = item;
+    const settings = this.getSettings();
+    const beats = settings.reduceMotion ? BEATS.compact : BEATS.full;
 
-  async #takeover(item) {
-    const card = buildCard(item, this.getSettings());
+    const wo = fromTemplate('tpl-walkout');
+    wo.dataset.pos = view.position || '';
+    fillWalkout(wo, view, settings);
+    this.stageWalkout.replaceChildren(wo);
+
+    const card = buildCard(item, settings);
     this.stageBody.replaceChildren(card);
+
+    this.stage.dataset.pos = view.position || '';
     this.stage.hidden = false;
-    this.stage.classList.remove('out');
+    this.stage.classList.remove('out', 'card-in');
     void this.stage.offsetWidth;
     this.stage.classList.add('in');
+
+    // Beat 0 — the light beam builds.
+    wo.classList.add('beam-on');
+    audio.riser(beats.beam + beats.posIn * 0.35);
+    await this.#wait(beats.beam);
+
+    // Beat 1 — POSITION.
+    const pos = wo.querySelector('.wo-phase-pos');
+    audio.hit(0);
+    pos.classList.add('enter');
+    await this.#wait(beats.posIn);
+    pos.classList.remove('enter');
+    pos.classList.add('leave');
+    await this.#wait(beats.posOut);
+
+    // Beat 2 — CLUB.
+    const team = wo.querySelector('.wo-phase-team');
+    audio.hit(1);
+    team.classList.add('enter');
+    await this.#wait(beats.teamIn);
+    team.classList.remove('enter');
+    team.classList.add('leave');
+    await this.#wait(beats.teamOut);
+
+    // Beat 3 — the card walks out.
+    audio.reveal();
+    this.#burst();
+    wo.classList.add('sparking');
+    this.stage.classList.add('card-in');
     card.classList.add('sweep');
-
     const bar = card.querySelector('.reveal-bar-fill');
-    this.#runBar(bar, DUR.full.hold + DUR.full.in);
+    this.#runBar(bar, beats.cardIn + beats.hold);
 
-    await this.#wait(DUR.full.in + DUR.full.hold);
+    await this.#wait(beats.cardIn + beats.hold);
 
     this.stage.classList.remove('in');
     this.stage.classList.add('out');
-    await this.#wait(DUR.full.out);
-    this.stage.classList.remove('out');
+    await this.#wait(beats.out);
+
+    this.stage.classList.remove('out', 'card-in');
     this.stage.hidden = true;
+    this.stageWalkout.replaceChildren();
     this.stageBody.replaceChildren();
   }
 
-  async #toast(item) {
-    const card = buildCard(item, this.getSettings());
+  /**
+   * Round 2+: the same three beats, played inside the corner banner. The
+   * banner slides in already covered by the walkout overlay, flips
+   * position → club, then wipes to expose the card.
+   */
+  async #miniWalkout(item) {
+    const { view } = item;
+    const settings = this.getSettings();
+    const beats = BEATS.compact;
+
+    const card = buildCard(item, settings);
     card.classList.add('toast-item', 'in');
+
+    const mini = fromTemplate('tpl-mini-walkout');
+    mini.dataset.pos = view.position || '';
+    setText(mini.querySelector('.mini-wo-pos'), view.position || '—');
+    setText(mini.querySelector('.mini-wo-team-text'), view.nflTeam || 'FA');
+    setImage(mini.querySelector('.mini-wo-logo'), settings.photos === false ? '' : teamLogoUrl(view.nflTeam));
+    card.append(mini);
+
     this.toasts.append(card);
+    audio.hit(0);
+    await this.#wait(beats.posIn);
 
+    mini.dataset.phase = 'team';
+    audio.hit(1);
+    await this.#wait(beats.teamIn);
+
+    mini.dataset.phase = 'done';
+    audio.sting();
+    card.classList.add('sweep');
     const bar = card.querySelector('.reveal-bar-fill');
-    this.#runBar(bar, DUR.compact.hold + DUR.compact.in);
+    this.#runBar(bar, beats.cardIn + beats.hold);
+    await this.#wait(beats.cardIn + beats.hold);
 
-    await this.#wait(DUR.compact.in + DUR.compact.hold);
     card.classList.remove('in');
     card.classList.add('out');
-    await this.#wait(DUR.compact.out);
+    await this.#wait(beats.out);
     card.remove();
+  }
+
+  /** White burst behind the card as it walks out. */
+  #burst() {
+    if (this.getSettings().reduceMotion || !this.stageFlash) return;
+    this.stageFlash.classList.remove('go');
+    void this.stageFlash.offsetWidth;
+    this.stageFlash.classList.add('go');
   }
 
   #runBar(bar, ms) {
@@ -159,7 +254,7 @@ export class RevealDirector {
     bar.style.transform = 'scaleX(0)';
   }
 
-  /** Sleep that can be cut short by skip() (Esc during a takeover). */
+  /** Sleep that can be cut short by skip() (Esc during a walkout). */
   async #wait(ms) {
     const step = 60;
     let left = ms;
@@ -171,6 +266,45 @@ export class RevealDirector {
       left -= chunk;
     }
   }
+}
+
+/** Fill the position/club phase cards and lay out the spark burst. */
+function fillWalkout(wo, view, settings = {}) {
+  setText(wo.querySelector('.wo-pos-text'), view.position || '—');
+  setText(wo.querySelector('.wo-pos-sub'), positionLabel(view.position));
+  setText(wo.querySelector('.wo-team-text'), view.nflTeam || 'Free agent');
+
+  // If the club logo can't load, the ring behind it carries the beat — the
+  // abbreviation is already spelled out underneath.
+  setImage(wo.querySelector('.wo-logo'), settings.photos === false ? '' : teamLogoUrl(view.nflTeam));
+
+  const sparks = wo.querySelector('.wo-sparks');
+  if (sparks && !settings.reduceMotion) {
+    for (let i = 0; i < SPARKS; i += 1) {
+      const spark = document.createElement('span');
+      spark.className = 'wo-spark';
+      spark.style.setProperty('--a', `${(360 / SPARKS) * i + (Math.random() * 12 - 6)}deg`);
+      spark.style.setProperty('--d', `${180 + Math.random() * 220}px`);
+      spark.style.setProperty('--t', `${Math.random() * 160}ms`);
+      sparks.append(spark);
+    }
+  }
+}
+
+const POSITION_LABELS = {
+  QB: 'Quarterback',
+  RB: 'Running back',
+  WR: 'Wide receiver',
+  TE: 'Tight end',
+  K: 'Kicker',
+  DEF: 'Team defense',
+  DL: 'Defensive line',
+  LB: 'Linebacker',
+  DB: 'Defensive back',
+};
+
+function positionLabel(pos) {
+  return POSITION_LABELS[pos] ?? '';
 }
 
 /** Build a reveal card element from a pick view. Shared by both tiers. */
@@ -195,12 +329,16 @@ export function buildCard({ view, teamLabel }, settings = {}) {
   const logo = card.querySelector('.logo');
   const showImages = settings.photos !== false;
 
+  const watermark = card.querySelector('.reveal-watermark');
+
   if (showImages) {
     setImage(photo, playerPhotoUrl(view.playerId));
     setImage(logo, teamLogoUrl(view.nflTeam));
+    setImage(watermark, teamLogoUrl(view.nflTeam));
   } else {
     setImage(photo, '');
     setImage(logo, '');
+    setImage(watermark, '');
   }
   return card;
 }

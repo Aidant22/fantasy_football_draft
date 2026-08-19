@@ -323,6 +323,17 @@ select:focus-visible, input:focus-visible, button:focus-visible {
 .reveal.sweep::after { animation: sweep 1.1s var(--ease-out) .12s 1; }
 @keyframes sweep { to { transform: translateX(120%); } }
 
+.reveal-watermark {
+  position: absolute; right: -34px; top: 50%;
+  width: 260px; height: 260px;
+  transform: translateY(-50%);
+  object-fit: contain;
+  opacity: .07;
+  pointer-events: none;
+}
+.reveal-watermark[hidden] { display: none; }
+.toasts .reveal-watermark { width: 130px; height: 130px; right: -22px; opacity: .09; }
+
 .reveal-meta { display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--text-faint); }
 .reveal-round { color: var(--gold); font-weight: 800; }
 .reveal-pick { font-variant-numeric: tabular-nums; }
@@ -361,61 +372,189 @@ select:focus-visible, input:focus-visible, button:focus-visible {
 .reveal-bar { height: 3px; border-radius: 999px; background: rgba(255, 255, 255, .09); overflow: hidden; }
 .reveal-bar-fill { display: block; height: 100%; width: 100%; transform-origin: left center; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform: scaleX(1); }
 
-/* ---------------------------------- stage (round 1 takeover) */
+/* ---------------------------------- walkout stage (round 1) */
 
 .stage {
+  --wo: var(--accent);
   position: fixed; inset: 0; z-index: 60;
   display: grid; place-items: center;
-  background: radial-gradient(900px 600px at 50% 45%, rgba(14, 22, 38, .93), rgba(4, 6, 10, .97));
+  background: radial-gradient(1100px 720px at 50% 46%, rgba(10, 16, 28, .95), rgba(2, 3, 6, .985));
   opacity: 0;
-  transition: opacity .32s var(--ease-out);
+  transition: opacity .3s var(--ease-out);
 }
+.stage[data-pos="QB"] { --wo: var(--qb); }
+.stage[data-pos="RB"] { --wo: var(--rb); }
+.stage[data-pos="WR"] { --wo: var(--wr); }
+.stage[data-pos="TE"] { --wo: var(--te); }
+.stage[data-pos="K"]  { --wo: var(--k); }
+.stage[data-pos="DEF"] { --wo: var(--def); }
 .stage[hidden] { display: none; }
 .stage.in { opacity: 1; }
+.stage.out { opacity: 0; }
 
+/* burst of white behind the card as it walks out */
 .stage-flash {
-  position: absolute; inset: 0;
-  background: radial-gradient(60% 60% at 50% 50%, #ffffff 0%, rgba(255, 255, 255, .55) 35%, transparent 72%);
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(58% 58% at 50% 52%, #ffffff 0%, rgba(255, 255, 255, .5) 34%, transparent 70%);
   opacity: 0;
 }
-.stage.in .stage-flash { animation: flash 620ms var(--ease-out) forwards; }
+.stage-flash.go { animation: flash 700ms var(--ease-out) forwards; }
 @keyframes flash {
-  0% { opacity: 0; transform: scale(.6); }
-  12% { opacity: .95; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.5); }
+  0% { opacity: 0; transform: scale(.55); }
+  10% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.55); }
 }
 
 .stage-rays {
   position: absolute; width: 150vmax; height: 150vmax; opacity: 0;
   background: repeating-conic-gradient(from 0deg,
-    rgba(70, 230, 164, .12) 0deg 6deg, transparent 6deg 18deg);
-  mask-image: radial-gradient(closest-side, rgba(0,0,0,.9), transparent 72%);
-  -webkit-mask-image: radial-gradient(closest-side, rgba(0,0,0,.9), transparent 72%);
+    rgba(120, 170, 255, .10) 0deg 5deg, transparent 5deg 17deg);
+  mask-image: radial-gradient(closest-side, rgba(0,0,0,.9), transparent 70%);
+  -webkit-mask-image: radial-gradient(closest-side, rgba(0,0,0,.9), transparent 70%);
 }
-.stage.in .stage-rays { animation: rays 5.6s linear forwards; }
+.stage.in .stage-rays { animation: rays 6.4s linear forwards; }
 @keyframes rays {
-  0% { opacity: 0; transform: rotate(0deg) scale(.85); }
-  14% { opacity: .85; }
-  85% { opacity: .5; }
-  100% { opacity: 0; transform: rotate(38deg) scale(1.05); }
+  0% { opacity: 0; transform: rotate(0deg) scale(.82); }
+  10% { opacity: .7; }
+  86% { opacity: .45; }
+  100% { opacity: 0; transform: rotate(42deg) scale(1.06); }
 }
 
-.stage-body { position: relative; z-index: 2; width: min(880px, 88vw); }
+.stage-walkout { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; }
+
+/* ---- the walkout itself: beam, then POSITION, then CLUB ---- */
+
+.walkout {
+  position: relative;
+  display: grid; place-items: center;
+  width: 100%; height: 100%;
+}
+.wo-beam {
+  position: absolute; top: 50%; left: 50%;
+  width: min(420px, 34vw); height: 150vh;
+  transform: translate(-50%, -50%) scaleY(0);
+  transform-origin: 50% 100%;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--wo) 55%, transparent) 45%, color-mix(in srgb, var(--wo) 80%, white) 100%);
+  filter: blur(38px);
+  opacity: 0;
+}
+.walkout.beam-on .wo-beam { animation: beam 3.1s var(--ease-out) forwards; }
+@keyframes beam {
+  0% { opacity: 0; transform: translate(-50%, -50%) scaleY(0) scaleX(.5); }
+  22% { opacity: .85; transform: translate(-50%, -50%) scaleY(1) scaleX(1); }
+  72% { opacity: .5; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scaleY(1.05) scaleX(1.3); }
+}
+
+.wo-phase {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  opacity: 0;
+  transform: scale(1.5);
+  filter: blur(16px);
+  will-change: transform, opacity, filter;
+}
+.wo-phase.enter { animation: phase-in 320ms var(--ease-out) forwards; }
+.wo-phase.leave { animation: phase-out 160ms var(--ease-in) forwards; }
+@keyframes phase-in {
+  0% { opacity: 0; transform: scale(1.5); filter: blur(16px); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+@keyframes phase-out {
+  0% { opacity: 1; transform: scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: scale(.82); filter: blur(10px); }
+}
+
+.wo-kicker {
+  font-size: 13px; font-weight: 800; letter-spacing: .42em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--wo) 75%, white);
+  padding-left: .42em;
+}
+
+.wo-big {
+  font-size: clamp(88px, 15vw, 210px);
+  font-weight: 900;
+  letter-spacing: -.05em;
+  line-height: .92;
+  color: #fff;
+  text-shadow:
+    0 0 28px color-mix(in srgb, var(--wo) 70%, transparent),
+    0 0 90px color-mix(in srgb, var(--wo) 45%, transparent);
+}
+
+.wo-sub {
+  font-size: 15px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.wo-logo-wrap {
+  position: relative;
+  width: min(200px, 22vh); height: min(200px, 22vh);
+  display: grid; place-items: center;
+  margin-bottom: 6px;
+}
+.wo-logo { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 34px color-mix(in srgb, var(--wo) 60%, transparent)); }
+.wo-logo[hidden] { display: none; }
+.wo-logo-ring {
+  position: absolute; inset: 12%;
+  border-radius: 50%;
+  border: 3px dashed color-mix(in srgb, var(--wo) 55%, transparent);
+  box-shadow: 0 0 40px color-mix(in srgb, var(--wo) 35%, transparent) inset;
+}
+.wo-logo:not([hidden]) + .wo-logo-ring { display: none; }
+
+.wo-phase-team .wo-big { font-size: clamp(52px, 8.5vw, 128px); }
+
+/* spark burst when the card lands */
+.wo-sparks { position: absolute; top: 50%; left: 50%; width: 0; height: 0; }
+.wo-spark {
+  position: absolute; top: 0; left: 0;
+  width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--wo) 60%, white);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--wo) 90%, transparent), 0 0 44px color-mix(in srgb, var(--wo) 45%, transparent);
+  opacity: 0;
+}
+.walkout.sparking .wo-spark { animation: spark 1s var(--ease-out) var(--t, 0ms) forwards; }
+@keyframes spark {
+  0% { opacity: 0; transform: rotate(var(--a)) translateX(0) scale(.4); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) scale(1); }
+}
+
+/* ---- the card that walks out ---- */
+
+.stage-body { position: relative; z-index: 3; width: min(880px, 88vw); }
 .stage-body .reveal { padding: 34px; }
-.stage-body .reveal-photo { width: 220px; height: 220px; }
+.stage-body .reveal-photo {
+  width: 220px; height: 220px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wo) 55%, transparent), 0 18px 40px rgba(0, 0, 0, .5);
+}
 .stage-body .reveal-name { font-size: clamp(38px, 5.6vw, 66px); }
 .stage-body .reveal-main { gap: 30px; }
 
-.stage-body .reveal { opacity: 0; transform: translateY(26px) scale(.96); }
-.stage.in .stage-body .reveal { animation: card-in .72s var(--ease-out) .16s forwards; }
-@keyframes card-in {
-  0% { opacity: 0; transform: translateY(26px) scale(.96); }
+.stage-body .reveal {
+  opacity: 0;
+  transform: translateY(90px) scale(.9);
+  border-color: color-mix(in srgb, var(--wo) 45%, transparent);
+  box-shadow: var(--shadow), 0 0 60px color-mix(in srgb, var(--wo) 22%, transparent);
+}
+.stage.card-in .stage-body .reveal { animation: walkout-card 780ms var(--ease-out) forwards; }
+@keyframes walkout-card {
+  0% { opacity: 0; transform: translateY(90px) scale(.9); }
+  55% { opacity: 1; }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
-.stage.out { opacity: 0; }
-.stage.out .stage-body .reveal { animation: card-out .34s var(--ease-in) forwards; }
+.stage.out .stage-body .reveal { animation: card-out .38s var(--ease-in) forwards; }
 @keyframes card-out {
-  to { opacity: 0; transform: translateY(-14px) scale(.985); }
+  to { opacity: 0; transform: translateY(-16px) scale(.985); }
+}
+
+/* the modal reuses a simple rise-in */
+@keyframes card-in {
+  0% { opacity: 0; transform: translateY(20px) scale(.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ---------------------------------- toasts (round 2+) */
@@ -448,17 +587,54 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   100% { transform: translateX(40%) scale(.97); opacity: 0; }
 }
 
-/* quick screen flash used by compact tier */
-.mini-flash {
-  position: fixed; inset: 0; z-index: 54; pointer-events: none;
-  background: radial-gradient(70% 70% at 78% 82%, rgba(255, 255, 255, .34), transparent 68%);
-  opacity: 0;
-  animation: mini-flash .38s var(--ease-out) forwards;
+/* the same three beats, compressed inside the banner */
+.toasts .reveal { overflow: hidden; }
+
+.mini-wo {
+  --wo: var(--accent);
+  position: absolute; inset: 0; z-index: 4;
+  display: grid; place-items: center;
+  background:
+    radial-gradient(120% 120% at 50% 120%, color-mix(in srgb, var(--wo) 34%, transparent), transparent 62%),
+    linear-gradient(160deg, #1b2333 0%, #0d121c 100%);
 }
-@keyframes mini-flash {
-  0% { opacity: 0; }
-  22% { opacity: .8; }
-  100% { opacity: 0; }
+.mini-wo[data-pos="QB"] { --wo: var(--qb); }
+.mini-wo[data-pos="RB"] { --wo: var(--rb); }
+.mini-wo[data-pos="WR"] { --wo: var(--wr); }
+.mini-wo[data-pos="TE"] { --wo: var(--te); }
+.mini-wo[data-pos="K"]  { --wo: var(--k); }
+.mini-wo[data-pos="DEF"] { --wo: var(--def); }
+
+.mini-wo-pos, .mini-wo-team {
+  grid-area: 1 / 1;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  opacity: 0;
+  transform: scale(1.35);
+  filter: blur(8px);
+}
+.mini-wo-pos {
+  font-size: 46px; font-weight: 900; letter-spacing: -.04em; color: #fff;
+  text-shadow: 0 0 24px color-mix(in srgb, var(--wo) 70%, transparent);
+}
+.mini-wo-team-text { font-size: 38px; font-weight: 900; letter-spacing: -.03em; color: #fff; }
+.mini-wo-logo { width: 42px; height: 42px; object-fit: contain; }
+.mini-wo-logo[hidden] { display: none; }
+
+.mini-wo[data-phase="pos"] .mini-wo-pos { animation: mini-phase-in 150ms var(--ease-out) forwards; }
+.mini-wo[data-phase="team"] .mini-wo-pos { animation: mini-phase-out 120ms var(--ease-in) forwards; }
+.mini-wo[data-phase="team"] .mini-wo-team { animation: mini-phase-in 150ms var(--ease-out) forwards; }
+.mini-wo[data-phase="done"] { animation: mini-wipe 260ms var(--ease-in) forwards; }
+@keyframes mini-phase-in {
+  0% { opacity: 0; transform: scale(1.35); filter: blur(8px); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+@keyframes mini-phase-out {
+  0% { opacity: 1; transform: scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: scale(.85); filter: blur(6px); }
+}
+@keyframes mini-wipe {
+  0% { opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { opacity: 0; clip-path: inset(0 0 0 100%); }
 }
 
 /* ---------------------------------- modal */
@@ -536,5 +712,6 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 
 body[data-reduce-motion="true"] .stage-rays,
 body[data-reduce-motion="true"] .stage-flash,
-body[data-reduce-motion="true"] .mini-flash { display: none; }
+body[data-reduce-motion="true"] .wo-beam,
+body[data-reduce-motion="true"] .wo-sparks { display: none; }
 body[data-reduce-motion="true"] .reveal.sweep::after { animation: none; }

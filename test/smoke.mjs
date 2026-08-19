@@ -94,12 +94,25 @@ try {
   check('board renders one column per team', true, '12 columns');
   check('board renders every round', (await page.$$('.cell')).length === 12 * 15);
 
-  // Round 1 pick -> full-screen takeover.
-  await waitFor(() => page.isVisible('#stage'), { label: 'round 1 takeover' });
+  // Round 1 pick -> full walkout: position beat, then club beat, then card.
+  await waitFor(() => page.isVisible('#stage'), { label: 'round 1 walkout' });
+  await waitFor(() => page.$$eval('.wo-phase-pos.enter', (n) => n.length === 1), { label: 'position beat' });
+  const posText = (await page.textContent('.wo-pos-text'))?.trim();
+  check('walkout flashes the position first', Boolean(posText), `position: ${posText}`);
+  await page.screenshot({ path: path.join(SHOTS, '01-walkout-position.png') });
+
+  await waitFor(() => page.$$eval('.wo-phase-team.enter', (n) => n.length === 1), { label: 'team beat' });
+  const teamText = (await page.textContent('.wo-team-text'))?.trim();
+  check('walkout flashes the team second', Boolean(teamText), `team: ${teamText}`);
+  check('position beat has left the screen', (await page.$$('.wo-phase-pos.leave')).length === 1);
+  await page.screenshot({ path: path.join(SHOTS, '02-walkout-team.png') });
+
+  await waitFor(() => page.$$eval('#stage.card-in', (n) => n.length === 1), { label: 'card walkout' });
   const stageName = (await page.textContent('#stage .reveal-name'))?.trim();
-  check('round 1 uses the full-screen stage', Boolean(stageName), `player: ${stageName}`);
-  check('round 1 card labels the round', (await page.textContent('#stage .reveal-round'))?.includes('Round 1'));
-  await page.screenshot({ path: path.join(SHOTS, '01-round1-takeover.png') });
+  check('walkout ends on the player card', Boolean(stageName), `player: ${stageName}`);
+  check('card labels the round', (await page.textContent('#stage .reveal-round'))?.includes('Round 1'));
+  check('card is tinted by position', (await page.getAttribute('#stage', 'data-pos')) === posText);
+  await page.screenshot({ path: path.join(SHOTS, '03-walkout-card.png') });
 
   await waitFor(async () => !(await page.isVisible('#stage')), { timeout: 12000, label: 'takeover to clear' });
   check('takeover clears itself', true);
@@ -111,10 +124,35 @@ try {
   check('on-the-clock column is marked', (await page.$$('.col[data-on-clock="true"]')).length === 1);
   check('next cell is highlighted', (await page.$$('.cell[data-next="true"]')).length === 1);
 
-  // Round 2+ -> corner banner instead of takeover.
-  await waitFor(() => page.$$eval('#toasts .reveal', (n) => n.length > 0), { timeout: 25000, label: 'toast banner' });
-  check('round 2+ uses a corner banner', true);
-  await page.screenshot({ path: path.join(SHOTS, '02-toast-banner.png') });
+  // Round 2+ -> the same beats, compressed into a corner banner. Sample the
+  // rendered opacity rather than trusting screenshot timing: each beat must
+  // actually become visible, not just exist in the DOM.
+  // Poll fast: the first beat is only 300ms long.
+  await waitFor(() => page.$$eval('#toasts .mini-wo', (n) => n.length > 0),
+    { timeout: 25000, interval: 25, label: 'banner walkout' });
+  const beats = await page.evaluate(async () => {
+    const mini = document.querySelector('#toasts .mini-wo');
+    const pos = mini.querySelector('.mini-wo-pos');
+    const team = mini.querySelector('.mini-wo-team');
+    const seen = { pos: 0, team: 0, phases: [] };
+    for (let i = 0; i < 60; i += 1) {
+      seen.pos = Math.max(seen.pos, Number(getComputedStyle(pos).opacity));
+      seen.team = Math.max(seen.team, Number(getComputedStyle(team).opacity));
+      const phase = mini.dataset.phase;
+      if (seen.phases.at(-1) !== phase) seen.phases.push(phase);
+      if (phase === 'done') break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return seen;
+  });
+  check('banner position beat becomes fully visible', beats.pos > 0.9, `opacity ${beats.pos.toFixed(2)}`);
+  check('banner team beat becomes fully visible', beats.team > 0.9, `opacity ${beats.team.toFixed(2)}`);
+  check('banner plays position → team → card', beats.phases.join(' → ') === 'pos → team → done', beats.phases.join(' → '));
+  await page.screenshot({ path: path.join(SHOTS, '04-banner-walkout.png') });
+  await waitFor(() => page.$$eval('#toasts .reveal-name', (n) => n.some((e) => e.textContent.trim())),
+    { timeout: 6000, label: 'banner card' });
+  await wait(400);
+  await page.screenshot({ path: path.join(SHOTS, '05-banner-card.png') });
 
   // Intensity control.
   await page.selectOption('#intensity', 'subtle');
@@ -130,7 +168,7 @@ try {
   // Settings persist and no secrets are stored.
   await page.click('#settings-btn');
   check('setup panel opens', await page.isVisible('#settings-modal'));
-  await page.screenshot({ path: path.join(SHOTS, '03-setup.png') });
+  await page.screenshot({ path: path.join(SHOTS, '06-setup.png') });
   await page.click('#settings-close');
 
   const stored = await page.evaluate(() => {
@@ -156,7 +194,7 @@ try {
     imgs.filter((i) => !i.hidden && i.getAttribute('src') && i.naturalWidth === 0).length);
   check('failed CDN images are hidden, not broken', visibleBrokenImages === 0, `${visibleBrokenImages} broken`);
 
-  await page.screenshot({ path: path.join(SHOTS, '04-board.png'), fullPage: false });
+  await page.screenshot({ path: path.join(SHOTS, '07-board.png'), fullPage: false });
 
   // The stingers are generated, not sampled — check they emit real signal.
   const levels = await page.evaluate(async () => {
@@ -179,10 +217,16 @@ try {
       audio.master.disconnect(an);
       return max;
     };
-    return { fanfare: await peak(() => audio.fanfare(), 2600), sting: await peak(() => audio.sting(), 700) };
+    return {
+      hit: await peak(() => audio.hit(0), 600),
+      reveal: await peak(() => audio.reveal(), 2000),
+      sting: await peak(() => audio.sting(), 700),
+    };
   });
-  check('round 1 fanfare produces audio without clipping', levels.fanfare > 0.05 && levels.fanfare < 1,
-    `peak ${levels.fanfare.toFixed(3)}`);
+  check('walkout phase hit produces audio without clipping', levels.hit > 0.05 && levels.hit < 1,
+    `peak ${levels.hit.toFixed(3)}`);
+  check('card reveal produces audio without clipping', levels.reveal > 0.05 && levels.reveal < 1,
+    `peak ${levels.reveal.toFixed(3)}`);
   check('round 2+ sting produces audio without clipping', levels.sting > 0.05 && levels.sting < 1,
     `peak ${levels.sting.toFixed(3)}`);
 
