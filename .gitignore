@@ -1,0 +1,19 @@
+# Local, machine-specific config — never commit these.
+js/config.local.js
+.env
+.env.*
+*.local.json
+
+# Caches / logs / OS junk
+node_modules/
+.cache/
+*.log
+.DS_Store
+Thumbs.db
+
+# Bulk public data, fetched at runtime — not worth committing
+data/
+
+# Test output
+test/screenshots/
+test/output/

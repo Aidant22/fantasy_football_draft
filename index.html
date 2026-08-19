@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://sleepercdn.com; connect-src 'self' https://api.sleeper.app; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Draft Room — Live Board</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <h1 id="league-name">Draft Room</h1>
+        <p id="league-sub" class="sub">Not connected</p>
+      </div>
+    </div>
+
+    <div class="status-cluster">
+      <div class="status-pill" id="status-pill">
+        <span class="dot" id="status-dot" aria-hidden="true"></span>
+        <span id="status-text">Idle</span>
+      </div>
+      <div class="clock-block">
+        <span class="clock-label">On the clock</span>
+        <span class="clock-team" id="on-clock">—</span>
+      </div>
+      <div class="clock-block">
+        <span class="clock-label">Pick</span>
+        <span class="clock-team" id="pick-counter">—</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label class="ctl" for="intensity">
+        <span class="ctl-label">Intensity</span>
+        <select id="intensity" title="Animation intensity (keyboard: 1-4)">
+          <option value="full">Full — R1 takeover</option>
+          <option value="compact">Compact — banners only</option>
+          <option value="subtle">Subtle — highlight only</option>
+          <option value="off">Off — silent board</option>
+        </select>
+      </label>
+      <button type="button" class="btn icon-btn" id="sound-toggle" aria-pressed="false" title="Toggle sound (S)">
+        <span id="sound-icon" aria-hidden="true">🔇</span><span class="btn-text">Sound</span>
+      </button>
+      <button type="button" class="btn icon-btn" id="test-btn" title="Preview the reveal animation (T)">
+        <span aria-hidden="true">▶</span><span class="btn-text">Preview</span>
+      </button>
+      <button type="button" class="btn icon-btn" id="settings-btn" title="Settings">
+        <span aria-hidden="true">⚙</span><span class="btn-text">Setup</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="board-wrap" id="board-wrap">
+    <div class="board" id="board" role="grid" aria-label="Draft board"></div>
+    <div class="empty-state" id="empty-state">
+      <div class="empty-inner">
+        <h2>No draft connected</h2>
+        <p>Enter your Sleeper league ID or username to go live, or start a mock draft to rehearse the broadcast.</p>
+        <div class="empty-actions">
+          <button type="button" class="btn primary" id="empty-connect">Connect a league</button>
+          <button type="button" class="btn" id="empty-mock">Run mock draft</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="statusbar">
+    <span id="foot-left">Ready.</span>
+    <span id="foot-right"></span>
+  </footer>
+</div>
+
+<!-- Full-screen reveal stage (round 1 / manual preview) -->
+<div class="stage" id="stage" hidden>
+  <div class="stage-flash" id="stage-flash" aria-hidden="true"></div>
+  <div class="stage-rays" id="stage-rays" aria-hidden="true"></div>
+  <div class="stage-body" id="stage-body" role="status" aria-live="polite"></div>
+</div>
+
+<!-- Corner banners (round 2+) -->
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<!-- Setup / settings dialog -->
+<div class="modal" id="settings-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <header class="modal-head">
+      <h2 id="settings-title">Draft setup</h2>
+      <button type="button" class="btn ghost" id="settings-close" aria-label="Close">✕</button>
+    </header>
+
+    <div class="modal-body">
+      <section class="field">
+        <label for="league-input">Sleeper league ID</label>
+        <input type="text" id="league-input" inputmode="numeric" autocomplete="off" spellcheck="false"
+               placeholder="e.g. 1048291234567890123">
+        <p class="hint">Found in your league URL: sleeper.com/leagues/<strong>&lt;league&nbsp;id&gt;</strong>/team</p>
+      </section>
+
+      <div class="or">or</div>
+
+      <section class="field">
+        <label for="username-input">Sleeper username</label>
+        <div class="row">
+          <input type="text" id="username-input" autocomplete="off" spellcheck="false" placeholder="your_sleeper_handle">
+          <input type="text" id="season-input" class="season" inputmode="numeric" autocomplete="off" placeholder="2026" aria-label="Season">
+          <button type="button" class="btn" id="lookup-btn">Find leagues</button>
+        </div>
+        <div class="league-list" id="league-list" hidden></div>
+      </section>
+
+      <section class="field">
+        <label for="poll-input">Poll interval — <span id="poll-value">4.0</span>s</label>
+        <input type="range" id="poll-input" min="3" max="10" step="0.5" value="4">
+        <p class="hint">Sleeper's API is public and unauthenticated. 3–5s is plenty during a live draft.</p>
+      </section>
+
+      <section class="field">
+        <label for="volume-input">Volume — <span id="volume-value">70</span>%</label>
+        <input type="range" id="volume-input" min="0" max="100" step="5" value="70">
+      </section>
+
+      <section class="field checks">
+        <label class="check"><input type="checkbox" id="photos-input" checked> Load player headshots &amp; team logos from Sleeper's CDN</label>
+        <label class="check"><input type="checkbox" id="reduce-input"> Reduce motion (softer transitions)</label>
+      </section>
+
+      <p class="privacy">
+        Everything stays on this machine. The app talks only to <code>api.sleeper.app</code> and
+        <code>sleepercdn.com</code>, stores your league ID and preferences in this browser's
+        <code>localStorage</code>, and has no analytics, telemetry, or backend of its own.
+      </p>
+    </div>
+
+    <footer class="modal-foot">
+      <button type="button" class="btn ghost danger" id="clear-btn">Clear local data</button>
+      <div class="grow"></div>
+      <button type="button" class="btn" id="mock-btn">Mock draft</button>
+      <button type="button" class="btn primary" id="connect-btn">Connect</button>
+    </footer>
+    <p class="modal-error" id="settings-error" hidden></p>
+  </div>
+</div>
+
+<!-- ------- templates (cloned in JS; no innerHTML anywhere) ------- -->
+
+<template id="tpl-column">
+  <div class="col" role="columnheader">
+    <div class="col-head">
+      <div class="avatar-wrap"><img class="avatar" alt="" width="34" height="34" referrerpolicy="no-referrer" decoding="async"></div>
+      <div class="col-names">
+        <span class="team-name"></span>
+        <span class="owner-name"></span>
+      </div>
+      <span class="slot-no"></span>
+    </div>
+    <div class="col-cells"></div>
+  </div>
+</template>
+
+<template id="tpl-cell">
+  <div class="cell" role="gridcell">
+    <span class="cell-pick"></span>
+    <span class="cell-pos"></span>
+    <span class="cell-name"></span>
+    <span class="cell-team"></span>
+  </div>
+</template>
+
+<template id="tpl-reveal">
+  <div class="reveal">
+    <div class="reveal-meta">
+      <span class="reveal-round"></span>
+      <span class="reveal-pick"></span>
+    </div>
+    <div class="reveal-main">
+      <div class="reveal-photo">
+        <img class="photo" alt="" width="220" height="220" referrerpolicy="no-referrer" decoding="async">
+        <span class="photo-fallback" aria-hidden="true"></span>
+      </div>
+      <div class="reveal-info">
+        <div class="reveal-drafted-by">
+          <img class="logo" alt="" width="30" height="30" referrerpolicy="no-referrer" decoding="async">
+          <span class="drafted-by-text"></span>
+        </div>
+        <h2 class="reveal-name"></h2>
+        <div class="reveal-tags">
+          <span class="tag pos"></span>
+          <span class="tag team"></span>
+          <span class="tag extra"></span>
+        </div>
+      </div>
+    </div>
+    <div class="reveal-bar" aria-hidden="true"><span class="reveal-bar-fill"></span></div>
+  </div>
+</template>
+
+<template id="tpl-league-option">
+  <button type="button" class="league-opt">
+    <span class="league-opt-name"></span>
+    <span class="league-opt-meta"></span>
+  </button>
+</template>
+
+<script src="js/config.js"></script>
+<script src="js/app.js" type="module"></script>
+</body>
+</html>
