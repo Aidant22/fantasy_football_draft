@@ -35,10 +35,11 @@ Then either:
 - **Run a mock draft** — a full 12-team / 15-round rehearsal that emits picks on a
   timer, so you can dial in the animations and sound before draft night.
 
-Optional: pre-download the player dictionary so nothing big is fetched mid-draft.
+Optional extras:
 
 ```bash
-npm run players      # writes data/players.json (gitignored)
+npm run players      # pre-download the player dictionary → data/players.json
+npm run audio        # regenerate the placeholder cue audio in audio/
 ```
 
 ## Controls
@@ -70,14 +71,32 @@ tiers to catch up rather than queueing a minute of animations.
 
 ### Sound
 
-Every cue is synthesized in the browser with the Web Audio API — oscillators,
-envelopes and generated noise — so there is no audio file in this repo and nothing
-licensed to worry about. The walkout is scored to its beats: a noise riser under
-the light beam, a metallic chime on the position card, a higher one on the club
-card, then a sub boom with a sustained major chord and bell shimmer as the player
-card lands. Rounds 2+ get the two chimes and a clipped sting. Browsers block audio
-until you interact with the page, so click **Sound** (or press `S`) once before the
-draft starts.
+The walkout is scored to its beats, and every beat is a file you can swap:
+
+| Cue | Plays when |
+| --- | --- |
+| `beam` | the light beam builds |
+| `position` | the position card punches in |
+| `team` | the club card punches in |
+| `reveal` | the player card walks out (round 1 payoff) |
+| `sting` | the round 2+ banner resolves |
+| `tick` | subtle mode |
+
+**To use your own sound:** drop a file into `audio/` named after the cue —
+`reveal.mp3`, `position.wav`, anything your browser can decode — then hit
+**Setup → Sound source → Reload**. The panel lists what each cue resolved to,
+with a ▶ to audition it. Delete a file and that cue falls back to the built-in
+synthesizer, so you can replace one sound or all six. Want different filenames,
+or one file turned down? `audio/manifest.json` maps cues to files and gains —
+see [`audio/README.md`](audio/README.md).
+
+The files shipped here are placeholders, synthesized by
+`scripts/make-placeholder-audio.mjs` (`npm run audio` regenerates them) — so
+there is no licensed audio in this repo either way. Prefer the pure-synth
+version? **Setup → Sound source → Synth only** ignores the folder entirely.
+
+Browsers block audio until you interact with the page, so click **Sound**
+(or press `S`) once before the draft starts.
 
 Team artwork comes from Sleeper's public CDN (`sleepercdn.com`) — player headshots
 and NFL club logos. No league shield, no broadcast chime, nothing trademark-adjacent.
@@ -120,9 +139,11 @@ This repo is safe to make public — there is nothing in it to leak.
   if you'd rather keep your league ID out of the working tree entirely, just type
   it into the app, or use `js/config.local.js` (gitignored).
 - **Locked-down egress.** A strict Content-Security-Policy (meta tag *and*
-  response header) allows scripts and styles from this origin only, images from
-  `sleepercdn.com`, and network calls to `api.sleeper.app`. Nothing else can be
-  loaded or contacted, including by accident.
+  response header) allows scripts, styles and audio from this origin only,
+  images from `sleepercdn.com`, and network calls to `api.sleeper.app`. Nothing
+  else can be loaded or contacted, including by accident — a cue filename in
+  `audio/manifest.json` is validated as a plain filename and can only ever
+  resolve inside `audio/`.
 - **No string-to-DOM anywhere.** Every value from the API is rendered with
   `textContent` or a cloned `<template>` — no `innerHTML`, no `eval`, no
   `new Function`. The test suite fails the build if that changes.
@@ -145,8 +166,8 @@ checks the board fills in snake order, the walkout plays its beats in order
 (position → club → card, in both the full and banner tiers, asserted on rendered
 opacity rather than screenshot timing), the intensity control takes effect,
 invalid league IDs are rejected client-side, broken CDN images degrade cleanly,
-the synthesized cues produce signal without clipping, and there are no console
-errors or CSP violations.
+every placeholder cue decodes and plays (and synth-only mode still produces
+signal, neither clipping), and there are no console errors or CSP violations.
 
 ## Layout
 
@@ -158,7 +179,9 @@ js/sleeper.js       Sleeper API client (validation, timeouts, retry hints)
 js/players.js       5MB player dictionary → slimmed + cached for a day
 js/board.js         snake board rendering and pick placement
 js/reveal.js        tiered reveal director and queue
-js/audio.js         original Web Audio stingers
+js/audio.js         cue playback: audio files, with a synth fallback
+js/soundpack.js     loads audio/ and resolves each cue to a file
+audio/              swappable cue files + manifest.json (placeholders included)
 js/mock.js          mock draft source for rehearsals
 serve.js            localhost static server with security headers
 ```

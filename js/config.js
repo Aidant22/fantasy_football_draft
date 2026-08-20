@@ -23,4 +23,8 @@ window.DRAFT_CONFIG = {
 
   // Start muted; the browser requires a click before audio can play anyway.
   soundOn: false,
+
+  // 'auto' plays the files in audio/ (falling back to the built-in synth for
+  // any cue you haven't supplied); 'synth' ignores the folder entirely.
+  soundMode: 'auto',
 };

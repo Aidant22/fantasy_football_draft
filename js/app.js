@@ -20,6 +20,7 @@ import { audio } from './audio.js';
 import { Board, toView } from './board.js';
 import { RevealDirector, buildCard } from './reveal.js';
 import { MockDraft } from './mock.js';
+import { CUES } from './soundpack.js';
 
 /* ------------------------------------------------------------------ state */
 
@@ -30,6 +31,7 @@ const defaults = {
   draftId: typeof cfg.draftId === 'string' ? cfg.draftId : '',
   intensity: ['full', 'compact', 'subtle', 'off'].includes(cfg.intensity) ? cfg.intensity : 'full',
   sound: Boolean(cfg.soundOn),
+  soundMode: cfg.soundMode === 'synth' ? 'synth' : 'auto',
   volume: 0.7,
   pollSeconds: clamp(Number(cfg.pollSeconds) || 4, 3, 10),
   photos: true,
@@ -89,6 +91,9 @@ const el = {
   pollValue: $('#poll-value'),
   volumeInput: $('#volume-input'),
   volumeValue: $('#volume-value'),
+  soundSource: $('#sound-source'),
+  audioReload: $('#audio-reload'),
+  cueList: $('#cue-list'),
   photosInput: $('#photos-input'),
   reduceInput: $('#reduce-input'),
   clearBtn: $('#clear-btn'),
@@ -149,8 +154,57 @@ function showError(message) {
   el.settingsError.hidden = !message;
 }
 
+/** Render which cue is coming from a file and which from the synth. */
+function renderCueList(report) {
+  const tpl = document.getElementById('tpl-cue-row');
+  el.cueList.replaceChildren();
+
+  for (const entry of report) {
+    const row = tpl.content.firstElementChild.cloneNode(true);
+    setText(row.querySelector('.cue-name'), entry.label);
+
+    let source = 'synthesized';
+    if (entry.state === 'file') source = `${entry.file} · ${entry.seconds.toFixed(1)}s`;
+    else if (entry.state === 'error') source = `${entry.file ?? 'file'} — ${entry.error}, using synth`;
+    else if (entry.state === 'synth-forced') source = 'synthesized (pinned in manifest)';
+    else if (entry.state === 'pending') source = 'not checked yet — press Reload';
+
+    const sourceEl = row.querySelector('.cue-source');
+    setText(sourceEl, settings.soundMode === 'synth' ? 'synthesized (synth-only mode)' : source);
+    sourceEl.dataset.state = settings.soundMode === 'synth' ? 'synth' : entry.state;
+
+    row.querySelector('.cue-play').addEventListener('click', () => {
+      if (!settings.sound) setSound(true);
+      audio.unlock();
+      playCue(entry.cue);
+    });
+    el.cueList.append(row);
+  }
+}
+
+/** Preview a single cue from the settings panel. */
+function playCue(cue) {
+  switch (cue) {
+    case 'beam': audio.riser(900); break;
+    case 'position': audio.hit(0); break;
+    case 'team': audio.hit(1); break;
+    case 'reveal': audio.reveal(); break;
+    case 'sting': audio.sting(); break;
+    case 'tick': audio.tick(); break;
+    default: break;
+  }
+}
+
+async function refreshCueList({ reload = false } = {}) {
+  if (!CUES.length) return;
+  renderCueList(reload ? [] : audio.pack.report());
+  const report = reload ? await audio.reloadPack() : audio.pack.report();
+  renderCueList(report);
+}
+
 function openModal() {
   showError('');
+  refreshCueList();
   el.leagueInput.value = state.leagueId || settings.leagueId || '';
   el.seasonInput.value = settings.season;
   el.modal.hidden = false;
@@ -565,6 +619,8 @@ function wireUi() {
   setText(el.pollValue, settings.pollSeconds.toFixed(1));
   el.volumeInput.value = String(Math.round(settings.volume * 100));
   setText(el.volumeValue, String(Math.round(settings.volume * 100)));
+  el.soundSource.value = settings.soundMode;
+  audio.setMode(settings.soundMode);
   el.photosInput.checked = settings.photos !== false;
   el.reduceInput.checked = Boolean(settings.reduceMotion);
   document.body.dataset.reduceMotion = String(Boolean(settings.reduceMotion));
@@ -595,6 +651,20 @@ function wireUi() {
     setText(el.volumeValue, String(Math.round(settings.volume * 100)));
     audio.setVolume(settings.volume);
     saveSettings();
+  });
+
+  el.soundSource.addEventListener('change', () => {
+    settings.soundMode = el.soundSource.value === 'synth' ? 'synth' : 'auto';
+    audio.setMode(settings.soundMode);
+    saveSettings();
+    refreshCueList();
+    foot(settings.soundMode === 'synth' ? 'Using the built-in synth for every cue.' : 'Using audio files from audio/ where present.');
+  });
+
+  el.audioReload.addEventListener('click', async () => {
+    if (!settings.sound) setSound(true);
+    await refreshCueList({ reload: true });
+    foot('Reloaded the audio/ folder.');
   });
 
   el.photosInput.addEventListener('change', () => { settings.photos = el.photosInput.checked; saveSettings(); });
@@ -686,6 +756,6 @@ async function boot() {
 }
 
 // Expose a tiny, read-only surface for the smoke test. No secrets here.
-window.__draftRoom = { state, settings, board, director, players, audio, startMock, buildCard, toView };
+window.__draftRoom = { state, settings, board, director, players, audio, startMock, buildCard, toView, playCue };
 
 boot();

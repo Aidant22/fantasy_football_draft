@@ -1,9 +1,10 @@
 /**
- * Original stingers, synthesized in the browser with the Web Audio API.
+ * Cue playback: audio files when you supply them, synthesis when you don't.
  *
- * Nothing here is sampled or copied: every sound is built from oscillators
- * and generated noise at runtime, so there is no licensed audio in this repo
- * and nothing to download.
+ * Every cue first looks for a file in audio/ (see js/soundpack.js). If there
+ * isn't one — or you switch the sound source to "synth only" — it falls back
+ * to the built-in synthesizer below, which builds each sound from oscillators
+ * and generated noise at runtime. Either way there is no licensed audio here.
  *
  * The walkout is scored in beats, so each cue is its own call:
  *
@@ -16,6 +17,8 @@
  *   tick()     — subtle mode: a single soft blip (~0.08s)
  */
 
+import { SoundPack } from './soundpack.js';
+
 export class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -24,6 +27,10 @@ export class AudioEngine {
     this.noiseBuffer = null;
     this.enabled = false;
     this.volume = 0.7;
+
+    /** 'auto' plays files when present; 'synth' ignores them entirely. */
+    this.mode = 'auto';
+    this.pack = new SoundPack();
   }
 
   /** Must be called from a user gesture — browsers block audio otherwise. */
@@ -47,6 +54,7 @@ export class AudioEngine {
       this.master.gain.value = this.volume;
 
       this.comp.connect(this.master).connect(this.ctx.destination);
+      this.pack.load(this.ctx);
       return true;
     } catch {
       this.ctx = null;
@@ -57,6 +65,29 @@ export class AudioEngine {
   setEnabled(on) {
     this.enabled = Boolean(on);
     if (this.enabled) this.unlock();
+  }
+
+  setMode(mode) {
+    this.mode = mode === 'synth' ? 'synth' : 'auto';
+  }
+
+  /** Re-read the audio/ folder — the settings panel's "Reload" button. */
+  async reloadPack() {
+    if (!this.ctx) this.unlock();
+    if (!this.ctx) return [];
+    await this.pack.load(this.ctx, { force: true });
+    return this.pack.report();
+  }
+
+  /** True when a cue was played from a file, so the synth should stand down. */
+  _file(cue) {
+    if (this.mode === 'synth') return false;
+    return this.pack.play(this.ctx, this.comp, cue);
+  }
+
+  /** Cut any ringing cue — called when a new walkout starts. */
+  stopAll() {
+    this.pack.stopAll();
   }
 
   setVolume(v) {
@@ -185,7 +216,7 @@ export class AudioEngine {
 
   /** The build under the light beam. `ms` matches the beam's growth. */
   riser(ms = 900) {
-    if (!this.ready) return;
+    if (!this.ready || this._file('beam')) return;
     const t = this.ctx.currentTime + 0.01;
     const dur = Math.max(0.2, ms / 1000);
     this._riser(t, dur, 0.16);
@@ -198,6 +229,7 @@ export class AudioEngine {
    */
   hit(step = 0) {
     if (!this.ready) return;
+    if (this._file(step === 0 ? 'position' : 'team')) return;
     const t = this.ctx.currentTime + 0.01;
     const base = [523.25, 659.25, 783.99][Math.min(2, Math.max(0, step))];
 
@@ -210,7 +242,7 @@ export class AudioEngine {
 
   /** The payoff when the card walks out. */
   reveal() {
-    if (!this.ready) return;
+    if (!this.ready || this._file('reveal')) return;
     const t = this.ctx.currentTime + 0.02;
 
     this._transient(t, 0.2);
@@ -228,7 +260,7 @@ export class AudioEngine {
 
   /** Round 2+: short sting, ~0.45s. */
   sting() {
-    if (!this.ready) return;
+    if (!this.ready || this._file('sting')) return;
     const t = this.ctx.currentTime + 0.01;
     this._transient(t, 0.16);
     this._sub(t, { from: 70, to: 42, dur: 0.3, gain: 0.3 });
@@ -239,7 +271,7 @@ export class AudioEngine {
 
   /** Subtle mode: barely-there confirmation blip. */
   tick() {
-    if (!this.ready) return;
+    if (!this.ready || this._file('tick')) return;
     const t = this.ctx.currentTime + 0.01;
     this._bell(1244.51, t, 0.09, 0.05);
     this._bell(1661.22, t + 0.035, 0.08, 0.03);

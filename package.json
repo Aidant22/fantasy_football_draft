@@ -8,7 +8,8 @@
     "start": "node serve.js",
     "dev": "node serve.js",
     "test": "node test/smoke.mjs",
-    "players": "node scripts/fetch-players.mjs"
+    "players": "node scripts/fetch-players.mjs",
+    "audio": "node scripts/make-placeholder-audio.mjs"
   },
   "engines": {
     "node": ">=18"

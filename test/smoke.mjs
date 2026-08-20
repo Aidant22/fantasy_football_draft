@@ -196,12 +196,15 @@ try {
 
   await page.screenshot({ path: path.join(SHOTS, '07-board.png'), fullPage: false });
 
-  // The stingers are generated, not sampled — check they emit real signal.
-  const levels = await page.evaluate(async () => {
+  // Cue audio: the shipped placeholder files must decode and play, and the
+  // synth must still work when files are switched off.
+  const sound = await page.evaluate(async () => {
     const { audio } = window.__draftRoom;
     audio.setEnabled(true);
     audio.unlock();
     if (audio.ctx.state === 'suspended') await audio.ctx.resume();
+    await audio.pack.load(audio.ctx, { force: true });
+
     const peak = async (fn, ms) => {
       const an = audio.ctx.createAnalyser();
       audio.master.connect(an);
@@ -217,18 +220,69 @@ try {
       audio.master.disconnect(an);
       return max;
     };
-    return {
-      hit: await peak(() => audio.hit(0), 600),
-      reveal: await peak(() => audio.reveal(), 2000),
-      sting: await peak(() => audio.sting(), 700),
-    };
+
+    audio.setMode('auto');
+    const report = audio.pack.report();
+    const fileReveal = await peak(() => audio.reveal(), 1600);
+    const fileHit = await peak(() => audio.hit(0), 600);
+
+    audio.setMode('synth');
+    const synthReveal = await peak(() => audio.reveal(), 1600);
+
+    audio.setMode('auto');
+    return { report, fileReveal, fileHit, synthReveal };
   });
-  check('walkout phase hit produces audio without clipping', levels.hit > 0.05 && levels.hit < 1,
-    `peak ${levels.hit.toFixed(3)}`);
-  check('card reveal produces audio without clipping', levels.reveal > 0.05 && levels.reveal < 1,
-    `peak ${levels.reveal.toFixed(3)}`);
-  check('round 2+ sting produces audio without clipping', levels.sting > 0.05 && levels.sting < 1,
-    `peak ${levels.sting.toFixed(3)}`);
+
+  const fromFiles = sound.report.filter((r) => r.state === 'file');
+  check('every placeholder cue loads from audio/', fromFiles.length === sound.report.length,
+    sound.report.map((r) => `${r.cue}:${r.state === 'file' ? r.file : r.state}`).join(' '));
+  check('file cue plays without clipping', sound.fileReveal > 0.05 && sound.fileReveal < 1,
+    `peak ${sound.fileReveal.toFixed(3)}`);
+  check('file phase hit plays', sound.fileHit > 0.05 && sound.fileHit < 1, `peak ${sound.fileHit.toFixed(3)}`);
+  check('synth-only mode still produces audio', sound.synthReveal > 0.05 && sound.synthReveal < 1,
+    `peak ${sound.synthReveal.toFixed(3)}`);
+
+  // Remove a cue file and it must fall back to the synth, not go silent.
+  const revealFile = path.join(ROOT, 'audio', 'reveal.mp3');
+  const stashed = `${revealFile}.stashed`;
+  fs.renameSync(revealFile, stashed);
+  try {
+    const fallback = await page.evaluate(async () => {
+      const { audio } = window.__draftRoom;
+      await audio.pack.load(audio.ctx, { force: true });
+      const an = audio.ctx.createAnalyser();
+      audio.master.connect(an);
+      audio.reveal();
+      const buf = new Float32Array(an.fftSize);
+      let max = 0;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 1600) {
+        an.getFloatTimeDomainData(buf);
+        for (const v of buf) max = Math.max(max, Math.abs(v));
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      audio.master.disconnect(an);
+      const state = audio.pack.report().find((r) => r.cue === 'reveal');
+      return { state: state.state, peak: max, others: audio.pack.report().filter((r) => r.state === 'file').length };
+    });
+    check('a removed cue file falls back to the synth', fallback.peak > 0.05 && fallback.state !== 'file',
+      `state ${fallback.state}, peak ${fallback.peak.toFixed(3)}`);
+    check('the other cues still play from their files', fallback.others === 5, `${fallback.others} files`);
+  } finally {
+    fs.renameSync(stashed, revealFile);
+    await page.evaluate(async () => {
+      const { audio } = window.__draftRoom;
+      await audio.pack.load(audio.ctx, { force: true });
+    });
+  }
+
+  // The settings panel lists what each cue resolved to.
+  await page.click('#settings-btn');
+  await waitFor(() => page.$$eval('#cue-list .cue-row', (n) => n.length === 6), { label: 'cue list' });
+  const firstSource = (await page.textContent('#cue-list .cue-source'))?.trim();
+  check('setup panel lists the cue sources', Boolean(firstSource), firstSource);
+  await page.screenshot({ path: path.join(SHOTS, '08-sound-settings.png') });
+  await page.click('#settings-close');
 
   const csp = consoleErrors.filter((t) => /Content Security Policy/i.test(t));
   check('no CSP violations', csp.length === 0, csp.slice(0, 2).join(' | '));

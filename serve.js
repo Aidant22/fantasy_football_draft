@@ -30,6 +30,13 @@ const TYPES = new Map([
   ['.webp', 'image/webp'],
   ['.ico', 'image/x-icon'],
   ['.woff2', 'font/woff2'],
+  ['.mp3', 'audio/mpeg'],
+  ['.wav', 'audio/wav'],
+  ['.ogg', 'audio/ogg'],
+  ['.m4a', 'audio/mp4'],
+  ['.aac', 'audio/aac'],
+  ['.flac', 'audio/flac'],
+  ['.webm', 'audio/webm'],
 ]);
 
 const CSP = [
@@ -39,7 +46,7 @@ const CSP = [
   "img-src 'self' data: https://sleepercdn.com",
   "connect-src 'self' https://api.sleeper.app",
   "font-src 'self'",
-  "media-src 'none'",
+  "media-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

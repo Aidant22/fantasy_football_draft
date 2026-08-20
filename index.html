@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://sleepercdn.com; connect-src 'self' https://api.sleeper.app; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://sleepercdn.com; connect-src 'self' https://api.sleeper.app; font-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Draft Room — Live Board</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%88%3C/text%3E%3C/svg%3E">
@@ -130,6 +130,23 @@
         <input type="range" id="volume-input" min="0" max="100" step="5" value="70">
       </section>
 
+      <section class="field">
+        <label for="sound-source">Sound source</label>
+        <div class="row">
+          <select id="sound-source">
+            <option value="auto">Audio files from audio/ (synth for anything missing)</option>
+            <option value="synth">Synth only — ignore audio files</option>
+          </select>
+          <button type="button" class="btn" id="audio-reload">Reload</button>
+        </div>
+        <p class="hint">
+          Drop your own <code>reveal.mp3</code>, <code>position.mp3</code>… into the
+          <code>audio/</code> folder to replace a cue. Any format your browser can decode works;
+          <code>audio/manifest.json</code> can point a cue at a different filename or set its gain.
+        </p>
+        <div class="cue-list" id="cue-list"></div>
+      </section>
+
       <section class="field checks">
         <label class="check"><input type="checkbox" id="photos-input" checked> Load player headshots &amp; team logos from Sleeper's CDN</label>
         <label class="check"><input type="checkbox" id="reduce-input"> Reduce motion (softer transitions)</label>
@@ -233,6 +250,14 @@
       <img class="mini-wo-logo" alt="" width="42" height="42" referrerpolicy="no-referrer" decoding="async">
       <span class="mini-wo-team-text"></span>
     </span>
+  </div>
+</template>
+
+<template id="tpl-cue-row">
+  <div class="cue-row">
+    <span class="cue-name"></span>
+    <span class="cue-source"></span>
+    <button type="button" class="btn ghost cue-play" title="Play this cue">▶</button>
   </div>
 </template>
 

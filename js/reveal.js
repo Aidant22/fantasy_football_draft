@@ -138,6 +138,8 @@ export class RevealDirector {
     const settings = this.getSettings();
     const beats = settings.reduceMotion ? BEATS.compact : BEATS.full;
 
+    audio.stopAll();   // don't let the previous pick's cue ring under this one
+
     const wo = fromTemplate('tpl-walkout');
     wo.dataset.pos = view.position || '';
     fillWalkout(wo, view, settings);
@@ -205,6 +207,8 @@ export class RevealDirector {
     const { view } = item;
     const settings = this.getSettings();
     const beats = BEATS.compact;
+
+    audio.stopAll();
 
     const card = buildCard(item, settings);
     card.classList.add('toast-item', 'in');
