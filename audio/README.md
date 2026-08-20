@@ -6,7 +6,7 @@ own — **any format your browser can decode** works (`.mp3`, `.wav`, `.ogg`,
 
 | Cue | Plays when | Suggested length |
 | --- | --- | --- |
-| `beam` | the light beam builds, before the position flashes | ~1s |
+| `chime` | the light beam builds, before the position flashes | ~1s |
 | `position` | the position card punches in | < 0.6s |
 | `team` | the club card punches in | < 0.6s |
 | `reveal` | the player card walks out (round 1 payoff) | 1.5–3s |

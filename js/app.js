@@ -173,9 +173,10 @@ function renderCueList(report) {
     setText(sourceEl, settings.soundMode === 'synth' ? 'synthesized (synth-only mode)' : source);
     sourceEl.dataset.state = settings.soundMode === 'synth' ? 'synth' : entry.state;
 
-    row.querySelector('.cue-play').addEventListener('click', () => {
+    row.querySelector('.cue-play').addEventListener('click', async () => {
       if (!settings.sound) setSound(true);
       audio.unlock();
+      if (audio.ctx) await audio.pack.load(audio.ctx);
       playCue(entry.cue);
     });
     el.cueList.append(row);
@@ -185,12 +186,12 @@ function renderCueList(report) {
 /** Preview a single cue from the settings panel. */
 function playCue(cue) {
   switch (cue) {
-    case 'beam': audio.riser(900); break;
-    case 'position': audio.hit(0); break;
-    case 'team': audio.hit(1); break;
-    case 'reveal': audio.reveal(); break;
-    case 'sting': audio.sting(); break;
-    case 'tick': audio.tick(); break;
+    case 'chime': audio.riser(2500); break;
+    // case 'position': audio.hit(0); break;
+    // case 'team': audio.hit(1); break;
+    // case 'reveal': audio.reveal(); break;
+    // case 'sting': audio.sting(); break;
+    // case 'tick': audio.tick(); break;
     default: break;
   }
 }

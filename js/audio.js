@@ -216,7 +216,7 @@ export class AudioEngine {
 
   /** The build under the light beam. `ms` matches the beam's growth. */
   riser(ms = 900) {
-    if (!this.ready || this._file('beam')) return;
+    if (!this.ready || this._file('chime')) return;
     const t = this.ctx.currentTime + 0.01;
     const dur = Math.max(0.2, ms / 1000);
     this._riser(t, dur, 0.16);
