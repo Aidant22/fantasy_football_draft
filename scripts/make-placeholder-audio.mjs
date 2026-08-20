@@ -99,55 +99,55 @@ function noise(buf, { start, dur, gain = 0.25, fromHz = 400, toHz = 4200, q = 1.
 
 const CUES = {
   /** The build under the light beam. */
-  beam() {
+  chime() {
     const buf = buffer(1.05);
     noise(buf, { start: 0, dur: 0.9, gain: 0.3, fromHz: 320, toHz: 5200, shape: 'up' });
     sub(buf, { start: 0, dur: 0.95, from: 44, to: 96, gain: 0.32 });
     return buf;
   },
 
-  /** Punch on the position card. */
-  position() {
-    return chime(523.25);
-  },
+  // /** Punch on the position card. */
+  // position() {
+  //   return chime(523.25);
+  // },
 
-  /** Punch on the club card — a fourth higher. */
-  team() {
-    return chime(698.46);
-  },
+  // /** Punch on the club card — a fourth higher. */
+  // team() {
+  //   return chime(698.46);
+  // },
 
   /** The payoff as the player card walks out. */
-  reveal() {
-    const buf = buffer(2.2);
-    noise(buf, { start: 0, dur: 0.12, gain: 0.3, fromHz: 3000, toHz: 900, shape: 'down' });
-    sub(buf, { start: 0, dur: 1.7, from: 96, to: 34, gain: 0.62 });
-    [261.63, 392.0, 523.25, 659.25, 783.99].forEach((f, i) => {
-      voice(buf, { freq: f, start: 0.005 * i, dur: 1.75, gain: i === 0 ? 0.16 : 0.13, decay: 0.9 });
-    });
-    [1046.5, 1318.51, 1567.98, 2093.0].forEach((f, i) => {
-      bell(buf, { freq: f, start: 0.04 + i * 0.055, dur: 1.2, gain: 0.1 });
-    });
-    return buf;
-  },
+  // reveal() {
+  //   const buf = buffer(2.2);
+  //   noise(buf, { start: 0, dur: 0.12, gain: 0.3, fromHz: 3000, toHz: 900, shape: 'down' });
+  //   sub(buf, { start: 0, dur: 1.7, from: 96, to: 34, gain: 0.62 });
+  //   [261.63, 392.0, 523.25, 659.25, 783.99].forEach((f, i) => {
+  //     voice(buf, { freq: f, start: 0.005 * i, dur: 1.75, gain: i === 0 ? 0.16 : 0.13, decay: 0.9 });
+  //   });
+  //   [1046.5, 1318.51, 1567.98, 2093.0].forEach((f, i) => {
+  //     bell(buf, { freq: f, start: 0.04 + i * 0.055, dur: 1.2, gain: 0.1 });
+  //   });
+  //   return buf;
+  // },
 
-  /** Round 2+ payoff. */
-  sting() {
-    const buf = buffer(0.5);
-    noise(buf, { start: 0, dur: 0.09, gain: 0.28, fromHz: 3400, toHz: 1200, shape: 'down' });
-    sub(buf, { start: 0, dur: 0.3, from: 70, to: 42, gain: 0.34 });
-    voice(buf, { freq: 587.33, start: 0.005, dur: 0.16, gain: 0.2, decay: 0.09 });
-    voice(buf, { freq: 880.0, start: 0.115, dur: 0.28, gain: 0.2, decay: 0.13 });
-    bell(buf, { freq: 1760, start: 0.12, dur: 0.3, gain: 0.1 });
-    return buf;
-  },
+  // /** Round 2+ payoff. */
+  // sting() {
+  //   const buf = buffer(0.5);
+  //   noise(buf, { start: 0, dur: 0.09, gain: 0.28, fromHz: 3400, toHz: 1200, shape: 'down' });
+  //   sub(buf, { start: 0, dur: 0.3, from: 70, to: 42, gain: 0.34 });
+  //   voice(buf, { freq: 587.33, start: 0.005, dur: 0.16, gain: 0.2, decay: 0.09 });
+  //   voice(buf, { freq: 880.0, start: 0.115, dur: 0.28, gain: 0.2, decay: 0.13 });
+  //   bell(buf, { freq: 1760, start: 0.12, dur: 0.3, gain: 0.1 });
+  //   return buf;
+  // },
 
-  /** Subtle mode. */
-  tick() {
-    const buf = buffer(0.16);
-    bell(buf, { freq: 1244.51, start: 0, dur: 0.09, gain: 0.14 });
-    bell(buf, { freq: 1661.22, start: 0.035, dur: 0.08, gain: 0.09 });
-    return buf;
-  },
+  // /** Subtle mode. */
+  // tick() {
+  //   const buf = buffer(0.16);
+  //   bell(buf, { freq: 1244.51, start: 0, dur: 0.09, gain: 0.14 });
+  //   bell(buf, { freq: 1661.22, start: 0.035, dur: 0.08, gain: 0.09 });
+  //   return buf;
+  // },
 };
 
 function chime(base) {

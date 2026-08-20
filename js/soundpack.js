@@ -16,15 +16,15 @@
  */
 
 /** Cue names, in the order the walkout plays them. */
-export const CUES = ['beam', 'position', 'team', 'reveal', 'sting', 'tick'];
+export const CUES = ['chime'];
 
 export const CUE_LABELS = {
-  beam: 'Light beam (build)',
-  position: 'Position card',
-  team: 'Club card',
-  reveal: 'Card walkout',
-  sting: 'Round 2+ sting',
-  tick: 'Subtle blip',
+  chime: 'Light beam (build)',
+  // position: 'Position card',
+  // team: 'Club card',
+  // reveal: 'Card walkout',
+  // sting: 'Round 2+ sting',
+  // tick: 'Subtle blip',
 };
 
 const EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'webm', 'aac', 'flac'];

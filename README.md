@@ -75,7 +75,7 @@ The walkout is scored to its beats, and every beat is a file you can swap:
 
 | Cue | Plays when |
 | --- | --- |
-| `beam` | the light beam builds |
+| `chime` | the light beam builds |
 | `position` | the position card punches in |
 | `team` | the club card punches in |
 | `reveal` | the player card walks out (round 1 payoff) |
