@@ -82,7 +82,6 @@
 
 <!-- Full-screen walkout stage (round 1 / manual preview) -->
 <div class="stage" id="stage" hidden>
-  <div class="stage-rays" id="stage-rays" aria-hidden="true"></div>
   <div class="stage-flash" id="stage-flash" aria-hidden="true"></div>
   <div class="stage-walkout" id="stage-walkout" aria-hidden="true"></div>
   <div class="stage-body" id="stage-body" role="status" aria-live="polite"></div>
@@ -110,6 +109,15 @@
       <div class="or">or</div>
 
       <section class="field">
+        <label for="draft-input">Sleeper draft ID</label>
+        <input type="text" id="draft-input" inputmode="numeric" autocomplete="off" spellcheck="false"
+               placeholder="e.g. 1048291234567890123">
+        <p class="hint">For a live mock draft, use the id from its URL: sleeper.com/draft/nfl/<strong>&lt;draft&nbsp;id&gt;</strong>. No league required.</p>
+      </section>
+
+      <div class="or">or</div>
+
+      <section class="field">
         <label for="username-input">Sleeper username</label>
         <div class="row">
           <input type="text" id="username-input" autocomplete="off" spellcheck="false" placeholder="your_sleeper_handle">
@@ -120,9 +128,15 @@
       </section>
 
       <section class="field">
-        <label for="poll-input">Poll interval — <span id="poll-value">4.0</span>s</label>
-        <input type="range" id="poll-input" min="3" max="10" step="0.5" value="4">
-        <p class="hint">Sleeper's API is public and unauthenticated. 3–5s is plenty during a live draft.</p>
+        <label for="poll-input">Poll interval — <span id="poll-value">0.5</span>s</label>
+        <input type="range" id="poll-input" min="0.5" max="10" step="0.5" value="0.5">
+        <p class="hint">Sleeper's API is public and unauthenticated. 0.5s catches a pick almost the instant it's made.</p>
+      </section>
+
+      <section class="field">
+        <label for="showcase-input">Full walkout through round — <span id="showcase-value">1</span></label>
+        <input type="range" id="showcase-input" min="1" max="15" step="1" value="1">
+        <p class="hint">With intensity "Full", picks through this round get the big screen takeover. Picks after it use the compact corner banner.</p>
       </section>
 
       <section class="field">
@@ -204,7 +218,6 @@
     <div class="reveal-main">
       <div class="reveal-photo">
         <img class="photo" alt="" width="220" height="220" referrerpolicy="no-referrer" decoding="async">
-        <span class="photo-fallback" aria-hidden="true"></span>
       </div>
       <div class="reveal-info">
         <div class="reveal-drafted-by">

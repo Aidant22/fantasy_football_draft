@@ -324,7 +324,7 @@ select:focus-visible, input:focus-visible, button:focus-visible {
 @keyframes sweep { to { transform: translateX(120%); } }
 
 .reveal-watermark {
-  position: absolute; right: -34px; top: 50%;
+  position: absolute; right: -8px; top: 50%;
   width: 260px; height: 260px;
   transform: translateY(-50%);
   object-fit: contain;
@@ -348,7 +348,6 @@ select:focus-visible, input:focus-visible, button:focus-visible {
 }
 .reveal-photo .photo { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
 .reveal-photo .photo[hidden] { display: none; }
-.photo-fallback { position: absolute; font-size: 40px; font-weight: 800; color: rgba(255, 255, 255, .5); letter-spacing: -.02em; }
 
 .reveal-info { min-width: 0; }
 .reveal-drafted-by { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; color: var(--text-dim); font-size: 13px; font-weight: 600; }
@@ -380,7 +379,7 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   display: grid; place-items: center;
   background: radial-gradient(1100px 720px at 50% 46%, rgba(10, 16, 28, .95), rgba(2, 3, 6, .985));
   opacity: 0;
-  transition: opacity .3s var(--ease-out);
+  transition: opacity .1s var(--ease-out);
 }
 .stage[data-pos="QB"] { --wo: var(--qb); }
 .stage[data-pos="RB"] { --wo: var(--rb); }
@@ -403,21 +402,6 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   0% { opacity: 0; transform: scale(.55); }
   10% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.55); }
-}
-
-.stage-rays {
-  position: absolute; width: 150vmax; height: 150vmax; opacity: 0;
-  background: repeating-conic-gradient(from 0deg,
-    rgba(120, 170, 255, .10) 0deg 5deg, transparent 5deg 17deg);
-  mask-image: radial-gradient(closest-side, rgba(0,0,0,.9), transparent 70%);
-  -webkit-mask-image: radial-gradient(closest-side, rgba(0,0,0,.9), transparent 70%);
-}
-.stage.in .stage-rays { animation: rays 6.4s linear forwards; }
-@keyframes rays {
-  0% { opacity: 0; transform: rotate(0deg) scale(.82); }
-  10% { opacity: .7; }
-  86% { opacity: .45; }
-  100% { opacity: 0; transform: rotate(42deg) scale(1.06); }
 }
 
 .stage-walkout { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; }
@@ -479,8 +463,8 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   line-height: .92;
   color: #fff;
   text-shadow:
-    0 0 28px color-mix(in srgb, var(--wo) 70%, transparent),
-    0 0 90px color-mix(in srgb, var(--wo) 45%, transparent);
+    0 0 28px rgba(255, 255, 255, .35),
+    0 0 90px rgba(255, 255, 255, .18);
 }
 
 .wo-sub {
@@ -494,13 +478,13 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   display: grid; place-items: center;
   margin-bottom: 6px;
 }
-.wo-logo { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 34px color-mix(in srgb, var(--wo) 60%, transparent)); }
+.wo-logo { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 34px rgba(255, 255, 255, .3)); }
 .wo-logo[hidden] { display: none; }
 .wo-logo-ring {
   position: absolute; inset: 12%;
   border-radius: 50%;
-  border: 3px dashed color-mix(in srgb, var(--wo) 55%, transparent);
-  box-shadow: 0 0 40px color-mix(in srgb, var(--wo) 35%, transparent) inset;
+  border: 3px dashed rgba(255, 255, 255, .22);
+  box-shadow: 0 0 40px rgba(255, 255, 255, .12) inset;
 }
 .wo-logo:not([hidden]) + .wo-logo-ring { display: none; }
 
@@ -570,7 +554,6 @@ select:focus-visible, input:focus-visible, button:focus-visible {
 .toasts .reveal-photo { width: 78px; height: 78px; border-radius: 12px; }
 .toasts .reveal-name { font-size: 25px; margin-bottom: 7px; }
 .toasts .reveal-main { gap: 16px; }
-.toasts .photo-fallback { font-size: 24px; }
 .toasts .reveal-drafted-by { font-size: 12px; }
 .toasts .reveal-drafted-by .logo { width: 22px; height: 22px; }
 .toasts .tag { font-size: 11px; padding: 4px 8px; }
@@ -722,7 +705,6 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
-body[data-reduce-motion="true"] .stage-rays,
 body[data-reduce-motion="true"] .stage-flash,
 body[data-reduce-motion="true"] .wo-beam,
 body[data-reduce-motion="true"] .wo-sparks { display: none; }

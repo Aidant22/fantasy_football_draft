@@ -2,18 +2,19 @@
  * Tiered pick reveals, staged like a pack walkout: the position flashes
  * first, then the club, then the player card itself walks out.
  *
- *   tier "full"    — round 1: screen takeover, three beats, ~5.8s
- *   tier "compact" — round 2+: the same three beats compressed into a corner
- *                    banner, done in ~1.6s
+ *   tier "full"    — screen takeover, three beats, ~6s, plus the chime. Used
+ *                    through the "full walkout through round" setting.
+ *   tier "compact" — the same three beats compressed into a silent corner
+ *                    banner, done in ~1.8s
  *   tier "subtle"  — board highlight only (the cell animation still fires)
  *   tier "off"     — nothing but the board update
  *
- * Reveals are queued and played one at a time so a burst of picks (autodraft,
- * or a reconnect after a lull) can never stack overlapping animations. If the
- * queue backs up, tiers are automatically compressed to catch up — the board
- * stays truthful and the recording stays smooth.
+ * Reveals play one at a time. A takeover runs to completion; any picks that
+ * arrive during it queue up and then play as compact banners, which are short
+ * enough to drain the backlog faster than picks arrive. cutSeq exists to cut
+ * an in-flight reveal on Esc or a reconnect.
  */
-import { fromTemplate, setText, setImage, initials, playerPhotoUrl, teamLogoUrl, ordinal, sleep } from './util.js';
+import { fromTemplate, setText, setImage, playerPhotoUrl, teamLogoUrl, ordinal, sleep } from './util.js';
 import { audio } from './audio.js';
 
 /** Beat sheet, in ms. Every number is a wall-clock offset you can tune. */
@@ -53,32 +54,43 @@ export class RevealDirector {
     this.getSettings = getSettings;
     this.queue = [];
     this.running = false;
-    this.skipRequested = false;
+    /**
+     * Bumped to cut whatever is on screen short. Every wait inside a reveal
+     * carries the value it started with, so one bump unwinds the whole
+     * animation at once instead of just shortening the beat it's sitting in.
+     */
+    this.cutSeq = 0;
   }
 
   /** Which tier a pick gets, given the round and the live intensity setting. */
   tierFor(round, queueDepth = 0) {
-    const { intensity } = this.getSettings();
+    const { intensity, showcaseRounds } = this.getSettings();
     if (intensity === 'off') return 'off';
     if (intensity === 'subtle') return 'subtle';
     if (queueDepth >= 6) return 'subtle';        // deep backlog: catch up fast
     if (intensity === 'compact') return 'compact';
-    if (queueDepth >= 2) return 'compact';       // 2+ waiting: skip the takeover
-    return round === 1 ? 'full' : 'compact';
+    // Anything already waiting means the takeover would make it wait ~6s.
+    // Play the 1.8s banner instead so the queue never builds in the first place.
+    if (queueDepth >= 1) return 'compact';
+    return round <= (showcaseRounds || 1) ? 'full' : 'compact';
   }
 
   enqueue(item) {
     this.queue.push(item);
+    // A takeover already on screen is allowed to finish; whatever piled up
+    // behind it then plays as compact banners, which run faster than picks
+    // arrive and so drain the backlog.
     if (!this.running) this.#drain();
   }
 
   clear() {
     this.queue.length = 0;
+    this.cutSeq += 1;
   }
 
   /** Cut the current reveal short (Esc). */
   skip() {
-    this.skipRequested = true;
+    this.cutSeq += 1;
   }
 
   async #drain() {
@@ -97,6 +109,7 @@ export class RevealDirector {
   /** Play one reveal at an explicit tier (also used by the Preview button). */
   async play(item, tier) {
     const { view } = item;
+    const seq = this.cutSeq;
 
     if (tier === 'off') {
       this.#land(view, false);   // board still updates, just silently
@@ -104,20 +117,23 @@ export class RevealDirector {
     }
 
     if (tier === 'subtle') {
-      audio.tick();
       this.#land(view);
-      await this.#wait(120);
+      await this.#wait(120, seq);
       return;
     }
 
     if (tier === 'compact') {
       this.#land(view);
-      await this.#miniWalkout(item);
+      await this.#miniWalkout(item, seq);
       return;
     }
 
-    await this.#walkout(item);
-    this.#land(view);
+    // Land in a finally so a cut walkout still leaves the board truthful.
+    try {
+      await this.#walkout(item, seq);
+    } finally {
+      this.#land(view);
+    }
   }
 
   /* ------------------------------------------------------------ pieces */
@@ -133,7 +149,7 @@ export class RevealDirector {
    * Round 1: the full walkout.
    *   beam → POSITION → CLUB → card rises → hold → fade back to the board.
    */
-  async #walkout(item) {
+  async #walkout(item, seq = this.cutSeq) {
     const { view } = item;
     const settings = this.getSettings();
     const beats = settings.reduceMotion ? BEATS.compact : BEATS.full;
@@ -154,31 +170,28 @@ export class RevealDirector {
     void this.stage.offsetWidth;
     this.stage.classList.add('in');
 
-    // Beat 0 — the light beam builds.
+    // Beat 0 — the light beam builds. The chime rides the walkout only.
     wo.classList.add('beam-on');
     audio.riser(beats.beam + beats.posIn * 0.35);
-    await this.#wait(beats.beam);
+    if (!await this.#wait(beats.beam, seq)) return this.#hideStage();
 
     // Beat 1 — POSITION.
     const pos = wo.querySelector('.wo-phase-pos');
-    audio.hit(0);
     pos.classList.add('enter');
-    await this.#wait(beats.posIn);
+    if (!await this.#wait(beats.posIn, seq)) return this.#hideStage();
     pos.classList.remove('enter');
     pos.classList.add('leave');
-    await this.#wait(beats.posOut);
+    if (!await this.#wait(beats.posOut, seq)) return this.#hideStage();
 
     // Beat 2 — CLUB.
     const team = wo.querySelector('.wo-phase-team');
-    audio.hit(1);
     team.classList.add('enter');
-    await this.#wait(beats.teamIn);
+    if (!await this.#wait(beats.teamIn, seq)) return this.#hideStage();
     team.classList.remove('enter');
     team.classList.add('leave');
-    await this.#wait(beats.teamOut);
+    if (!await this.#wait(beats.teamOut, seq)) return this.#hideStage();
 
     // Beat 3 — the card walks out.
-    audio.reveal();
     this.#burst();
     wo.classList.add('sparking');
     this.stage.classList.add('card-in');
@@ -186,13 +199,18 @@ export class RevealDirector {
     const bar = card.querySelector('.reveal-bar-fill');
     this.#runBar(bar, beats.cardIn + beats.hold);
 
-    await this.#wait(beats.cardIn + beats.hold);
+    if (!await this.#wait(beats.cardIn + beats.hold, seq)) return this.#hideStage();
 
     this.stage.classList.remove('in');
     this.stage.classList.add('out');
-    await this.#wait(beats.out);
+    await this.#wait(beats.out, seq);
 
-    this.stage.classList.remove('out', 'card-in');
+    return this.#hideStage();
+  }
+
+  /** Drop the takeover instantly — used at the end, and on every cut. */
+  #hideStage() {
+    this.stage.classList.remove('in', 'out', 'card-in');
     this.stage.hidden = true;
     this.stageWalkout.replaceChildren();
     this.stageBody.replaceChildren();
@@ -203,12 +221,12 @@ export class RevealDirector {
    * banner slides in already covered by the walkout overlay, flips
    * position → club, then wipes to expose the card.
    */
-  async #miniWalkout(item) {
+  async #miniWalkout(item, seq = this.cutSeq) {
     const { view } = item;
     const settings = this.getSettings();
     const beats = BEATS.compact;
 
-    audio.stopAll();
+    audio.stopAll();   // banners are silent — the chime is the walkout's alone
 
     const card = buildCard(item, settings);
     card.classList.add('toast-item', 'in');
@@ -221,24 +239,21 @@ export class RevealDirector {
     card.append(mini);
 
     this.toasts.append(card);
-    audio.hit(0);
-    await this.#wait(beats.posIn);
+    if (!await this.#wait(beats.posIn, seq)) return card.remove();
 
     mini.dataset.phase = 'team';
-    audio.hit(1);
-    await this.#wait(beats.teamIn);
+    if (!await this.#wait(beats.teamIn, seq)) return card.remove();
 
     mini.dataset.phase = 'done';
-    audio.sting();
     card.classList.add('sweep');
     const bar = card.querySelector('.reveal-bar-fill');
     this.#runBar(bar, beats.cardIn + beats.hold);
-    await this.#wait(beats.cardIn + beats.hold);
+    if (!await this.#wait(beats.cardIn + beats.hold, seq)) return card.remove();
 
     card.classList.remove('in');
     card.classList.add('out');
-    await this.#wait(beats.out);
-    card.remove();
+    await this.#wait(beats.out, seq);
+    return card.remove();
   }
 
   /** White burst behind the card as it walks out. */
@@ -258,17 +273,22 @@ export class RevealDirector {
     bar.style.transform = 'scaleX(0)';
   }
 
-  /** Sleep that can be cut short by skip() (Esc during a walkout). */
-  async #wait(ms) {
-    const step = 60;
+  /**
+   * Sleep in short slices so a cut lands within ~20ms rather than at the end
+   * of the beat. Returns false once cutSeq has moved past `seq`, which is the
+   * caller's signal to tear down and let the next pick through immediately.
+   */
+  async #wait(ms, seq) {
+    const step = 20;
     let left = ms;
     while (left > 0) {
-      if (this.skipRequested) { this.skipRequested = false; return; }
+      if (this.cutSeq !== seq) return false;
       const chunk = Math.min(step, left);
       // eslint-disable-next-line no-await-in-loop
       await sleep(chunk);
       left -= chunk;
     }
+    return this.cutSeq === seq;
   }
 }
 
@@ -327,9 +347,6 @@ export function buildCard({ view, teamLabel }, settings = {}) {
   setText(card.querySelector('.tag.extra'), view.isKeeper ? 'Keeper' : (view.jersey ? `#${view.jersey}` : ''));
 
   const photo = card.querySelector('.photo');
-  const fallback = card.querySelector('.photo-fallback');
-  setText(fallback, initials(view.name));
-
   const logo = card.querySelector('.logo');
   const showImages = settings.photos !== false;
 

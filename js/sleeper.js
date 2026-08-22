@@ -20,14 +20,31 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson(path, { timeout = TIMEOUT_MS, signal } = {}) {
+/**
+ * Sleeper serves this API through Cloudflare with `s-maxage` in the hundreds
+ * of seconds, so a plain poll can be answered from the edge cache with a
+ * response that is already seconds stale — `cache: 'no-store'` only governs
+ * *this browser's* cache, never a shared one. Live endpoints therefore get a
+ * unique query string per request, which makes the edge treat each poll as its
+ * own key and go to origin. Digits and letters only; nothing here is derived
+ * from user input.
+ */
+let bustSeq = 0;
+const cacheBuster = () => {
+  bustSeq = (bustSeq + 1) % 1e6;
+  return `${Date.now().toString(36)}${bustSeq.toString(36)}`;
+};
+
+async function getJson(path, { timeout = TIMEOUT_MS, signal, fresh = false } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   const onAbort = () => ctrl.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
 
+  const url = `${BASE}${path}${fresh ? `?_=${cacheBuster()}` : ''}`;
+
   try {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await fetch(url, {
       method: 'GET',
       signal: ctrl.signal,
       cache: 'no-store',
@@ -65,8 +82,9 @@ export const api = {
   getUsers: (leagueId, opts) => getJson(`/league/${requireId(leagueId, 'league id')}/users`, opts),
   getRosters: (leagueId, opts) => getJson(`/league/${requireId(leagueId, 'league id')}/rosters`, opts),
   getDrafts: (leagueId, opts) => getJson(`/league/${requireId(leagueId, 'league id')}/drafts`, opts),
-  getDraft: (draftId, opts) => getJson(`/draft/${requireId(draftId, 'draft id')}`, opts),
-  getPicks: (draftId, opts) => getJson(`/draft/${requireId(draftId, 'draft id')}/picks`, opts),
+  // Polled live during a draft — always bypass the shared edge cache.
+  getDraft: (draftId, opts) => getJson(`/draft/${requireId(draftId, 'draft id')}`, { fresh: true, ...opts }),
+  getPicks: (draftId, opts) => getJson(`/draft/${requireId(draftId, 'draft id')}/picks`, { fresh: true, ...opts }),
   getState: (opts) => getJson('/state/nfl', opts),
 
   getUser(username, opts) {

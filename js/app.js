@@ -29,11 +29,13 @@ const cfg = (typeof window !== 'undefined' && window.DRAFT_CONFIG) || {};
 const defaults = {
   leagueId: typeof cfg.leagueId === 'string' ? cfg.leagueId : '',
   draftId: typeof cfg.draftId === 'string' ? cfg.draftId : '',
+  directDraftId: typeof cfg.directDraftId === 'string' ? cfg.directDraftId : '',
   intensity: ['full', 'compact', 'subtle', 'off'].includes(cfg.intensity) ? cfg.intensity : 'full',
+  showcaseRounds: clamp(Number(cfg.showcaseRounds) || 1, 1, 15),
   sound: Boolean(cfg.soundOn),
   soundMode: cfg.soundMode === 'synth' ? 'synth' : 'auto',
   volume: 0.7,
-  pollSeconds: clamp(Number(cfg.pollSeconds) || 4, 3, 10),
+  pollSeconds: clamp(Number(cfg.pollSeconds) || 0.5, 0.5, 10),
   photos: true,
   reduceMotion: false,
   autoScroll: true,
@@ -41,6 +43,13 @@ const defaults = {
 };
 
 const settings = { ...defaults, ...(store.get('settings', {}) || {}) };
+
+// One-time migration: older sessions saved pollSeconds under a higher floor.
+// Reset those to the current default so a stale stored value can't slow polling.
+if ((Number(settings.settingsVersion) || 0) < 3) {
+  settings.pollSeconds = defaults.pollSeconds;
+  settings.settingsVersion = 3;
+}
 
 const state = {
   leagueId: '',
@@ -83,12 +92,15 @@ const el = {
   modal: $('#settings-modal'),
   modalClose: $('#settings-close'),
   leagueInput: $('#league-input'),
+  draftInput: $('#draft-input'),
   usernameInput: $('#username-input'),
   seasonInput: $('#season-input'),
   lookupBtn: $('#lookup-btn'),
   leagueList: $('#league-list'),
   pollInput: $('#poll-input'),
   pollValue: $('#poll-value'),
+  showcaseInput: $('#showcase-input'),
+  showcaseValue: $('#showcase-value'),
   volumeInput: $('#volume-input'),
   volumeValue: $('#volume-value'),
   soundSource: $('#sound-source'),
@@ -187,11 +199,6 @@ function renderCueList(report) {
 function playCue(cue) {
   switch (cue) {
     case 'chime': audio.riser(2500); break;
-    // case 'position': audio.hit(0); break;
-    // case 'team': audio.hit(1); break;
-    // case 'reveal': audio.reveal(); break;
-    // case 'sting': audio.sting(); break;
-    // case 'tick': audio.tick(); break;
     default: break;
   }
 }
@@ -207,6 +214,9 @@ function openModal() {
   showError('');
   refreshCueList();
   el.leagueInput.value = state.leagueId || settings.leagueId || '';
+  el.draftInput.value = (!state.leagueId && state.draftId && state.draftId !== 'mock')
+    ? state.draftId
+    : settings.directDraftId || '';
   el.seasonInput.value = settings.season;
   el.modal.hidden = false;
   el.leagueInput.focus();
@@ -293,6 +303,53 @@ async function connectLeague(leagueId) {
   state.draftId = String(draft.draft_id);
   state.league = league;
   settings.leagueId = leagueId;
+  settings.directDraftId = '';
+  saveSettings();
+
+  await startWithContext({ league, users, rosters, draft }, { mock: false });
+}
+
+/**
+ * Connect straight to a draft by its id — no league lookup needed. This is
+ * how you point the room at a live Sleeper mock draft: paste the id from
+ * sleeper.com/draft/nfl/<id> and skip the league entirely.
+ */
+async function connectDraft(draftId) {
+  stopPolling();
+  director.clear();
+
+  if (!isId(draftId)) throw new ApiError('That does not look like a Sleeper draft id (all digits).', { retryable: false });
+
+  setStatus('waiting', 'Loading draft');
+  foot('Loading draft…', '');
+
+  const draft = await api.getDraft(draftId);
+  if (!draft) throw new ApiError('Draft not found. Double-check the id.', { retryable: false });
+
+  // Mock drafts still have a (synthetic) league behind them — pull it for
+  // real team names/avatars where possible, but degrade gracefully if it
+  // isn't readable, since buildTeamMaps() falls back to draft_order alone.
+  const leagueId = draft.league_id && String(draft.league_id) !== '0' ? String(draft.league_id) : '';
+  let league = null;
+  let users = [];
+  let rosters = [];
+  if (leagueId) {
+    try {
+      [league, users, rosters] = await Promise.all([
+        api.getLeague(leagueId),
+        api.getUsers(leagueId),
+        api.getRosters(leagueId),
+      ]);
+    } catch {
+      league = null; users = []; rosters = [];
+    }
+  }
+
+  state.leagueId = leagueId;
+  state.draftId = String(draft.draft_id);
+  state.league = league;
+  settings.directDraftId = state.draftId;
+  settings.leagueId = '';
   saveSettings();
 
   await startWithContext({ league, users, rosters, draft }, { mock: false });
@@ -375,10 +432,13 @@ async function runLoop(token) {
   while (state.running && token === state.loopToken) {
     let wait = settings.pollSeconds * 1000;
     try {
-      await tick();
+      const freshCount = await tick();
       state.pollFailures = 0;
-      if (state.draft?.status === 'complete') wait = 30000;
-      else if (state.draft?.status === 'pre_draft') wait = Math.max(wait, 6000);
+      // A pick just landed: check again sooner in case another follows right
+      // behind it (autodraft can fire several picks back to back).
+      if (freshCount > 0) wait = Math.min(wait, 250);
+      else if (state.draft?.status === 'complete') wait = 30000;
+      else if (state.draft?.status === 'pre_draft' && !state.appliedPicks) wait = Math.max(wait, 6000);
     } catch (err) {
       state.pollFailures += 1;
       const retryable = !(err instanceof ApiError) || err.retryable;
@@ -387,31 +447,19 @@ async function runLoop(token) {
       if (!retryable) { stopPolling(); return; }
       wait = Math.min(30000, 2000 * 2 ** Math.min(4, state.pollFailures - 1));
     }
-    // Jitter keeps repeated polls from lining up exactly.
+    // A touch of jitter keeps repeated polls from lining up exactly, without
+    // meaningfully adding to how stale a pick can be before it's caught.
     // eslint-disable-next-line no-await-in-loop
-    await new Promise((r) => setTimeout(r, wait + Math.random() * 400));
+    await new Promise((r) => setTimeout(r, wait + Math.random() * Math.min(150, wait * 0.15)));
   }
 }
 
+/** @returns {Promise<number>} how many new picks were just applied. */
 async function tick() {
   state.ticks += 1;
 
   const picks = state.mock ? state.mock.fetchPicks() : (await api.getPicks(state.draftId)) ?? [];
   state.lastPollAt = Date.now();
-
-  if (state.mock) {
-    if (state.mock.status !== state.draft.status) {
-      state.draft = { ...state.draft, status: state.mock.status };
-      applyDraftStatus(state.draft.status);
-    }
-  } else if (state.ticks % 8 === 1) {
-    // Cheap status refresh so pauses / completion are noticed without extra chatter.
-    const fresh = await api.getDraft(state.draftId);
-    if (fresh?.status && fresh.status !== state.draft?.status) {
-      state.draft = fresh;
-      applyDraftStatus(fresh.status);
-    }
-  }
 
   const sorted = picks
     .filter((p) => p && Number.isFinite(Number(p.pick_no)))
@@ -421,12 +469,17 @@ async function tick() {
   // already underway backfills silently, but a draft that starts while you're
   // watching animates from pick 1.
   const isFirstPaint = !state.primed;
+  let freshCount = 0;
 
   if (sorted.length > state.appliedPicks) {
     const fresh = sorted.slice(state.appliedPicks);
+    freshCount = fresh.length;
     state.appliedPicks = sorted.length;
     state.lastPickNo = Number(sorted[sorted.length - 1].pick_no) || state.lastPickNo;
 
+    // Enqueue the reveal before anything else in this tick — the walkout
+    // pops up the instant a fresh pick is found, not after the bookkeeping
+    // below.
     for (const pick of fresh) {
       const view = toView(pick, { teams: state.teams, board });
       if (isFirstPaint) {
@@ -439,11 +492,38 @@ async function tick() {
       foot(`Loaded ${fresh.length} existing pick${fresh.length === 1 ? '' : 's'}.`);
     }
     if (state.draft?.status === 'drafting') setStatus('live', 'Live');
+    // Picks arriving means the draft is live no matter what the last status
+    // fetch said — flip immediately instead of waiting for the next refresh,
+    // which would otherwise leave polling on the slow pre-draft cadence.
+    else if (!state.mock && state.draft?.status === 'pre_draft') {
+      state.draft = { ...state.draft, status: 'drafting' };
+      applyDraftStatus('drafting');
+    }
+  }
+
+  // Status refresh is a "nice to notice a pause/completion" check, not
+  // something the reveal above should ever wait on — it runs last.
+  if (state.mock) {
+    if (state.mock.status !== state.draft.status) {
+      state.draft = { ...state.draft, status: state.mock.status };
+      applyDraftStatus(state.draft.status);
+    }
+  } else if (state.ticks % 8 === 1) {
+    // Fire-and-forget: never let a status check delay the next picks poll.
+    const forDraftId = state.draftId;
+    api.getDraft(forDraftId).then((freshDraft) => {
+      if (state.draftId !== forDraftId) return;   // reconnected meanwhile
+      if (freshDraft?.status && freshDraft.status !== state.draft?.status) {
+        state.draft = freshDraft;
+        applyDraftStatus(freshDraft.status);
+      }
+    }).catch(() => { /* picks polling is the real health signal */ });
   }
 
   state.primed = true;
   updateClock();
   foot(null, `${state.mock ? 'Mock draft' : 'Sleeper'} · polled ${timeAgo(state.lastPollAt)} · ${state.appliedPicks} picks`);
+  return freshCount;
 }
 
 function updateClock() {
@@ -552,17 +632,11 @@ function previewReveal() {
 
 /* ------------------------------------------------------- settings panel */
 
-async function handleConnectClick() {
-  const value = el.leagueInput.value.trim();
-  showError('');
-  if (!isId(value)) {
-    showError('League ids are 6+ digits, e.g. 1048291234567890123.');
-    return;
-  }
+async function attemptConnect(fn) {
   el.connectBtn.disabled = true;
   try {
     state.mock = null;
-    await connectLeague(value);
+    await fn();
     closeModal();
   } catch (err) {
     showError(err instanceof Error ? err.message : 'Could not connect.');
@@ -570,6 +644,27 @@ async function handleConnectClick() {
   } finally {
     el.connectBtn.disabled = false;
   }
+}
+
+async function handleConnectClick() {
+  showError('');
+
+  const draftValue = el.draftInput.value.trim();
+  if (draftValue) {
+    if (!isId(draftValue)) {
+      showError('Draft ids are 6+ digits, e.g. 1048291234567890123.');
+      return;
+    }
+    await attemptConnect(() => connectDraft(draftValue));
+    return;
+  }
+
+  const value = el.leagueInput.value.trim();
+  if (!isId(value)) {
+    showError('League ids are 6+ digits, e.g. 1048291234567890123.');
+    return;
+  }
+  await attemptConnect(() => connectLeague(value));
 }
 
 async function handleLookupClick() {
@@ -618,6 +713,8 @@ function wireUi() {
   el.intensity.value = settings.intensity;
   el.pollInput.value = String(settings.pollSeconds);
   setText(el.pollValue, settings.pollSeconds.toFixed(1));
+  el.showcaseInput.value = String(settings.showcaseRounds);
+  setText(el.showcaseValue, String(settings.showcaseRounds));
   el.volumeInput.value = String(Math.round(settings.volume * 100));
   setText(el.volumeValue, String(Math.round(settings.volume * 100)));
   el.soundSource.value = settings.soundMode;
@@ -636,14 +733,21 @@ function wireUi() {
   el.connectBtn.addEventListener('click', handleConnectClick);
   el.lookupBtn.addEventListener('click', handleLookupClick);
   el.leagueInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnectClick(); });
+  el.draftInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleConnectClick(); });
   el.usernameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLookupClick(); });
   el.mockBtn.addEventListener('click', () => { closeModal(); startMock(); });
   el.emptyMock.addEventListener('click', startMock);
   el.emptyConnect.addEventListener('click', openModal);
 
   el.pollInput.addEventListener('input', () => {
-    settings.pollSeconds = clamp(Number(el.pollInput.value) || 4, 3, 10);
+    settings.pollSeconds = clamp(Number(el.pollInput.value) || 0.5, 0.5, 10);
     setText(el.pollValue, settings.pollSeconds.toFixed(1));
+    saveSettings();
+  });
+
+  el.showcaseInput.addEventListener('input', () => {
+    settings.showcaseRounds = clamp(Number(el.showcaseInput.value) || 1, 1, 15);
+    setText(el.showcaseValue, String(settings.showcaseRounds));
     saveSettings();
   });
 
@@ -733,17 +837,29 @@ function wireUi() {
 async function boot() {
   wireUi();
 
-  // A league id may come from js/config.js, from a previous session, or from
-  // ?league= — validated the same way in all three cases.
+  // A league or draft id may come from js/config.js, from a previous
+  // session, or from ?league=/?draft= — validated the same way in all cases.
   let leagueId = settings.leagueId;
+  let directDraftId = settings.directDraftId;
   try {
-    const param = new URL(window.location.href).searchParams.get('league');
-    if (param && isId(param)) leagueId = param;
+    const params = new URL(window.location.href).searchParams;
+    const leagueParam = params.get('league');
+    const draftParam = params.get('draft');
+    if (leagueParam && isId(leagueParam)) leagueId = leagueParam;
+    if (draftParam && isId(draftParam)) directDraftId = draftParam;
   } catch { /* ignore */ }
 
   if (isId(leagueId)) {
     try {
       await connectLeague(leagueId);
+      return;
+    } catch (err) {
+      setStatus('error', 'Error');
+      foot(err instanceof Error ? err.message : 'Could not connect.');
+    }
+  } else if (isId(directDraftId)) {
+    try {
+      await connectDraft(directDraftId);
       return;
     } catch (err) {
       setStatus('error', 'Error');
